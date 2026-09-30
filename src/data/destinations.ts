@@ -153,6 +153,23 @@ export const destinations: Destination[] = [
       { label: "Season", value: "Winter" },
     ],
   },
+  {
+    slug: "tamil-nadu",
+    name: "Tamil Nadu",
+    country: "India",
+    tagline: "Temple towers, Chettinad mansions and coastal Kanyakumari",
+    description:
+      "A sacred and storied south: the gopurams of Madurai, the shore temples of Mahabalipuram, and the land's-end sunrise at Kanyakumari. Home ground for Explorers Choice — expect local hosts, temple food and timeless craft.",
+    image: "https://images.unsplash.com/photo-1692173248120-59547c3d4653?auto=format&fit=crop&w=1600&q=80",
+    region: "South India",
+    bestTime: "November – March",
+    highlights: ["Meenakshi temple", "Chettinad heritage", "Rameswaram shores", "Kanyakumari sunrise"],
+    stats: [
+      { label: "Duration", value: "5–8 days" },
+      { label: "Group", value: "Max 10" },
+      { label: "Season", value: "Winter" },
+    ],
+  },
 ];
 
 export function getDestinationBySlug(slug: string) {

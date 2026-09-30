@@ -258,11 +258,11 @@ DESTINATIONS = [
             "Rameswaram and the land's-end sunrise at Kanyakumari. Home ground for "
             "Explorers Choice — expect local hosts, temple food and timeless craft."
         ),
-        "hero_image": "https://images.unsplash.com/photo-1561361513-2d000a50f0dc?auto=format&fit=crop&w=1600&q=80",
+        "hero_image": "https://images.unsplash.com/photo-1692173248120-59547c3d4653?auto=format&fit=crop&w=1600&q=80",
         "gallery": [
-            "https://images.unsplash.com/photo-1561361513-2d000a50f0dc?auto=format&fit=crop&w=1200&q=80",
-            "https://images.unsplash.com/photo-1569257088808-a3b739fac9d7?auto=format&fit=crop&w=1200&q=80",
-            "https://images.unsplash.com/photo-1600100598826-6b4f6ffe5d32?auto=format&fit=crop&w=1200&q=80",
+            "https://images.unsplash.com/photo-1692173248120-59547c3d4653?auto=format&fit=crop&w=1200&q=80",
+            "https://images.unsplash.com/photo-1788448351519-2734da0d1c8f?auto=format&fit=crop&w=1200&q=80",
+            "https://images.unsplash.com/photo-1759134334610-488eb3937c82?auto=format&fit=crop&w=1200&q=80",
         ],
         "best_time": "November – March",
         "recommended_duration": "5–8 days",
@@ -673,10 +673,10 @@ PACKAGES = [
         "duration_nights": 5,
         "starting_price": 36500.00,
         "currency": "INR",
-        "hero_image": "https://images.unsplash.com/photo-1561361513-2d000a50f0dc?auto=format&fit=crop&w=1600&q=80",
+        "hero_image": "https://images.unsplash.com/photo-1692173248120-59547c3d4653?auto=format&fit=crop&w=1600&q=80",
         "gallery": [
-            "https://images.unsplash.com/photo-1561361513-2d000a50f0dc?auto=format&fit=crop&w=1200&q=80",
-            "https://images.unsplash.com/photo-1600100598826-6b4f6ffe5d32?auto=format&fit=crop&w=1200&q=80",
+            "https://images.unsplash.com/photo-1692173248120-59547c3d4653?auto=format&fit=crop&w=1200&q=80",
+            "https://images.unsplash.com/photo-1788448351519-2734da0d1c8f?auto=format&fit=crop&w=1200&q=80",
         ],
         "highlights": ["Meenakshi temple", "Chettinad mansions", "Rameswaram shore", "Kanyakumari sunrise"],
         "included": [
@@ -834,6 +834,17 @@ HOTELS = [
 ]
 
 
+BROKEN_IMAGE_MARKERS = (
+    "photo-1583430788308-9fe346a8e869",
+    "photo-1506461883276-59f2ebe600eb",
+    "photo-1600100598826-6b4f6ffe5d32",
+)
+
+
+def _is_broken_image(url: str) -> bool:
+    return any(marker in url for marker in BROKEN_IMAGE_MARKERS)
+
+
 def seed() -> None:
     Base.metadata.create_all(bind=engine)
     db: Session = SessionLocal()
@@ -843,11 +854,11 @@ def seed() -> None:
         for d in DESTINATIONS:
             existing = db.scalars(select(Destination).where(Destination.slug == d["slug"])).first()
             if existing:
-                if existing.hero_image and "photo-1583430788308-9fe346a8e869" in existing.hero_image:
+                if existing.hero_image and _is_broken_image(existing.hero_image):
                     existing.hero_image = d["hero_image"]
                 if existing.gallery:
                     existing.gallery = [
-                        d["gallery"][0] if "photo-1583430788308-9fe346a8e869" in image else image
+                        d["gallery"][0] if _is_broken_image(image) else image
                         for image in existing.gallery
                     ]
                 slug_to_destination[d["slug"]] = existing
@@ -863,13 +874,11 @@ def seed() -> None:
                 select(Package).where(Package.slug == package_data["slug"])
             ).first()
             if existing_pkg:
-                if existing_pkg.hero_image and "photo-1583430788308-9fe346a8e869" in existing_pkg.hero_image:
+                if existing_pkg.hero_image and _is_broken_image(existing_pkg.hero_image):
                     existing_pkg.hero_image = package_data["hero_image"]
                 if existing_pkg.gallery:
                     existing_pkg.gallery = [
-                        package_data["gallery"][0]
-                        if "photo-1583430788308-9fe346a8e869" in image
-                        else image
+                        package_data["gallery"][0] if _is_broken_image(image) else image
                         for image in existing_pkg.gallery
                     ]
                 continue

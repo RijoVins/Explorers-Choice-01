@@ -1,11 +1,6 @@
 import { Hero } from "@/components/home/Hero";
 import { TravelServices } from "@/components/home/TravelServices";
-import { FeaturedDestinations } from "@/components/home/FeaturedDestinations";
-import { FeaturedPackages } from "@/components/home/FeaturedPackages";
-import { HowItWorks } from "@/components/home/HowItWorks";
 import { CustomerStories } from "@/components/home/CustomerStories";
-import { TravelInspiration } from "@/components/home/TravelInspiration";
-import { FaqSection } from "@/components/home/FaqSection";
 import { BookNowCta } from "@/components/cta/BookNowCta";
 
 export default function Home() {
@@ -13,12 +8,7 @@ export default function Home() {
     <>
       <Hero />
       <TravelServices />
-      <FeaturedDestinations />
-      <FeaturedPackages />
-      <HowItWorks />
       <CustomerStories />
-      <TravelInspiration />
-      <FaqSection />
       <BookNowCta />
     </>
   );

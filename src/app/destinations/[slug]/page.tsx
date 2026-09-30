@@ -5,10 +5,10 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { PackageCard } from "@/components/cards/PackageCard";
-import { SafeImage } from "@/components/cards/SafeImage";
 import { BookNowCta } from "@/components/cta/BookNowCta";
 import { getDestinationBySlug, getPackages } from "@/lib/catalog";
 import { BackButton } from "@/components/ui/BackButton";
+import { SmartImage } from "@/components/ui/SmartImage";
 
 export const revalidate = 60;
 export const dynamicParams = true;
@@ -57,7 +57,7 @@ export default async function DestinationDetail({ params }: { params: Promise<{ 
 
       {/* Hero */}
       <section className="relative h-[70vh] min-h-[440px] overflow-hidden">
-        <SafeImage
+        <SmartImage
           src={destination.image}
           alt={destination.name}
           sizes="100vw"

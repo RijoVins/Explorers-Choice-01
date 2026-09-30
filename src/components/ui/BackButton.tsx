@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
-import { ArrowLeftIcon } from "@heroicons/react/24/outline";
 
 interface BackButtonProps {
   /** Optional custom text for the button */
@@ -47,7 +46,18 @@ export function BackButton({
       className={className}
     >
       {showIcon && (
-        <ArrowLeftIcon className="mr-2 h-4 w-4" aria-hidden="true" />
+        <svg
+          className="mr-2 h-4 w-4"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M19 12H5M12 19l-7-7 7-7" />
+        </svg>
       )}
       {label}
     </Button>

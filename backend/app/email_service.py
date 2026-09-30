@@ -658,11 +658,6 @@ def build_cab_booking_notification_content(data: dict[str, Any]) -> tuple[str, s
     customer_email = data.get("email", "")
     phone = data.get("phone", "")
     special_reqs = data.get("special_requirements", "")
-    base_fare = float(data.get("base_fare", 0) or 0)
-    convenience_fee = float(data.get("convenience_fee", 0) or 0)
-    gst = float(data.get("gst", 0) or 0)
-    total = float(data.get("total_amount", 0) or 0)
-    currency = data.get("currency", "INR")
     status_str = data.get("status", "PENDING_CONFIRMATION")
 
     trip_labels = {
@@ -692,10 +687,7 @@ Pickup Date      : {pickup_date}
 Pickup Time      : {pickup_time}
 Approx. Distance : {distance_kms:,.0f} km
 Passengers       : {passengers}
-Estimated Fare   : {currency} {base_fare:,.2f}
-Convenience Fee  : {currency} {convenience_fee:,.2f}
-GST              : {currency} {gst:,.2f}
-Total (Estimate) : {currency} {total:,.2f}
+Fare             : To be confirmed by Explorers Choice
 Status           : {status_str}
 
 CUSTOMER CONTACT:
@@ -863,24 +855,10 @@ Confirm the cab with the customer and dispatch the driver.
         <div style="margin-top: 10px; font-size: 13px; color: #6b7280;">Pickup: <strong>{pickup_date} at {pickup_time}</strong> &bull; Approx. Distance: <strong>{distance_kms:,.0f} km</strong> &bull; Passengers: <strong>{passengers}</strong></div>
       </div>
 
-      <div class="section-title">Estimated Fare</div>
-      <table class="details-table">
-        <tr>
-          <td class="label">Base Fare:</td>
-          <td class="value">{currency} {base_fare:,.2f}</td>
-        </tr>
-        <tr>
-          <td class="label">Convenience Fee:</td>
-          <td class="value">{currency} {convenience_fee:,.2f}</td>
-        </tr>
-        <tr>
-          <td class="label">GST:</td>
-          <td class="value">{currency} {gst:,.2f}</td>
-        </tr>
-      </table>
-      <div class="total-box">
-        <span class="total-label">Estimated Total</span>
-        <span class="total-amount">{currency} {total:,.2f}</span>
+      <div class="section-title">Fare</div>
+      <div class="notes-box">
+        <strong>To be confirmed by the Explorers Choice team.</strong> A final
+        quote for this trip will be sent to the customer before dispatch.
       </div>
 
       <div class="section-title">Customer Contact Details</div>

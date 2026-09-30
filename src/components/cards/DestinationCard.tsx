@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Destination } from "@/lib/catalog";
-import { SafeImage } from "@/components/cards/SafeImage";
+import { SmartImage } from "@/components/ui/SmartImage";
 
 export function DestinationCard({ destination }: { destination: Destination }) {
   return (
@@ -9,10 +9,12 @@ export function DestinationCard({ destination }: { destination: Destination }) {
       className="group block overflow-hidden rounded-2xl border border-line bg-cream shadow-card transition-transform duration-200 hover:-translate-y-1"
     >
       <div className="relative aspect-[4/3] overflow-hidden bg-sand">
-        <SafeImage
+        <SmartImage
           src={destination.image}
           alt={destination.name}
+          fill
           sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+          className="object-cover transition-transform duration-500 group-hover:scale-105"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-forest-dark/40 to-transparent" />
         {destination.region ? (

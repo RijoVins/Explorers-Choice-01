@@ -78,7 +78,7 @@ export function Hero() {
                     {item}
                   </label>
                 ))}
-                {mode !== "Flights" && <span className="font-semibold text-forest">{mode === "Holidays" ? "Curated journeys for every kind of explorer" : mode === "Cabs" ? "Airport transfers, city rides & outstation cabs" : "Handpicked stays, ready when you are"}</span>}
+                {mode !== "Flights" && <span className="text-xs font-semibold text-forest sm:text-sm">{mode === "Holidays" ? "Curated journeys for every kind of explorer" : mode === "Cabs" ? "Airport transfers, city rides & outstation cabs" : "Handpicked stays, ready when you are"}</span>}
               </div>
 
               <div className="grid gap-3 md:grid-cols-[1.4fr_1fr_1fr_auto]">

@@ -13,6 +13,20 @@ export { formatMoney };
  * fabricated travel products.
  */
 
+const MEENAKSHI_TEMPLE_IMAGE =
+  "https://images.unsplash.com/photo-1692173248120-59547c3d4653?auto=format&fit=crop&w=1600&q=80";
+
+const IMAGE_FALLBACKS: Record<string, string> = {
+  "https://images.unsplash.com/photo-1506461883276-59f2ebe600eb": MEENAKSHI_TEMPLE_IMAGE,
+  "https://images.unsplash.com/photo-1583430788308-9fe346a8e869": MEENAKSHI_TEMPLE_IMAGE,
+  "https://images.unsplash.com/photo-1600100598826-6b4f6ffe5d32": MEENAKSHI_TEMPLE_IMAGE,
+};
+
+function resolveImage(url: string): string {
+  if (!url) return "";
+  return IMAGE_FALLBACKS[url.split("?")[0]] ?? url;
+}
+
 export type ApiItineraryDay = {
   id?: number;
   package_id?: number;
@@ -102,11 +116,11 @@ export function toDestination(api: Record<string, unknown>): Destination {
     region: str(api.region),
     tagline: str(api.short_description),
     description: str(api.description),
-    image: str(api.hero_image),
+    image: resolveImage(str(api.hero_image)),
     bestTime: str(api.best_time),
     recommendedDuration: str(api.recommended_duration),
     highlights: strArray(api.highlights),
-    gallery: strArray(api.gallery),
+    gallery: strArray(api.gallery).map(resolveImage),
     thingsToDo: strArray(api.things_to_do),
     travelInformation: strArray(api.travel_information),
     isFeatured: Boolean(api.is_featured),
@@ -138,9 +152,9 @@ export function toPackage(
     durationDays,
     duration: durationDays > 0 ? `${durationDays} days` : "Duration TBC",
     startingPrice: num(api.starting_price),
-    currency: str(api.currency, "USD"),
+    currency: str(api.currency, "INR"),
     highlights: strArray(api.highlights),
-    image: str(api.hero_image),
+    image: resolveImage(str(api.hero_image)),
     summary: str(api.short_description || api.description),
     itinerary: itinerary.map((day) => ({
       day: `Day ${day.day_number}`,
@@ -154,10 +168,14 @@ export function toPackage(
     mealSummary: str(api.meal_summary),
     cancellationPolicy: str(api.cancellation_policy),
     importantInformation: strArray(api.important_information),
-    gallery: strArray(api.gallery),
+    gallery: strArray(api.gallery).map(resolveImage),
     isFeatured: Boolean(api.is_featured),
     isActive: Boolean(api.is_active),
     bookingMode: str(api.booking_mode, "REQUEST_ONLY"),
+    itineraryDays: detail ? itinerary : [],
+    faqs: detail ? faqs : [],
+  };
+}
     itineraryDays: detail ? itinerary : [],
     faqs: detail ? faqs : [],
   };

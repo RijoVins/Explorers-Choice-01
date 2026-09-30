@@ -8,10 +8,6 @@ const exploreLinks = [
   { label: "Hotels", href: "/hotels" },
   { label: "Train Booking", href: "/trains" },
   { label: "Cab Booking", href: "/cabs" },
-  { label: "Rajasthan", href: "/destinations/rajasthan" },
-  { label: "Kerala", href: "/destinations/kerala" },
-  { label: "Ladakh", href: "/destinations/ladakh" },
-  { label: "Goa", href: "/destinations/goa" },
 ];
 
 const companyLinks = [

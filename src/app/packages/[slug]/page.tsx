@@ -5,9 +5,9 @@ import { Container } from "@/components/ui/Container";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Button } from "@/components/ui/Button";
 import { PackageCard } from "@/components/cards/PackageCard";
-import { SafeImage } from "@/components/cards/SafeImage";
 import { BookNowCta } from "@/components/cta/BookNowCta";
 import { getPackageBySlug, getPackages, formatMoney } from "@/lib/catalog";
+import { SmartImage } from "@/components/ui/SmartImage";
 
 export const revalidate = 60;
 
@@ -75,7 +75,7 @@ export default async function PackageDetail({ params }: { params: Promise<{ slug
     <>
       {/* Hero */}
       <section className="relative h-[65vh] min-h-[400px] overflow-hidden">
-        <SafeImage
+        <SmartImage
           src={pkg.image}
           alt={pkg.name}
           sizes="100vw"

@@ -6,9 +6,7 @@ import { Container } from "@/components/ui/Container";
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/components/providers";
 import {
-  CAB_CATALOG,
   createCabBooking,
-  estimateCabFare,
   TRIP_TYPE_LABELS,
   CabBookingConfirmation,
   CabTripType,
@@ -29,7 +27,7 @@ export default function CabsPage() {
   const { user } = useAuth();
 
   const [tripType, setTripType] = useState<CabTripType>("AIRPORT_TRANSFER");
-  const [cabType, setCabType] = useState("Sedan");
+  const [cabType, setCabType] = useState("");
   const [pickupLocation, setPickupLocation] = useState("");
   const [dropLocation, setDropLocation] = useState("");
   const [pickupDate, setPickupDate] = useState(tomorrowStr());
@@ -48,19 +46,14 @@ export default function CabsPage() {
 
   const idempotencyRef = useRef<string | null>(null);
 
-  const selectedCab = useMemo(
-    () => CAB_CATALOG.find((c) => c.key === cabType) ?? null,
-    [cabType]
-  );
   const distance = useMemo(() => Math.max(0, Number(distanceKms) || 0), [distanceKms]);
-  const fare = useMemo(() => estimateCabFare(selectedCab, distance), [selectedCab, distance]);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError("");
 
-    if (!selectedCab) {
-      setError("Please choose a cab type.");
+    if (!cabType.trim()) {
+      setError("Please tell us the cab type you'd prefer.");
       return;
     }
     if (!pickupLocation.trim() || !dropLocation.trim()) {
@@ -84,7 +77,7 @@ export default function CabsPage() {
     try {
       const result = await createCabBooking({
         trip_type: tripType,
-        cab_type: selectedCab.key,
+        cab_type: cabType.trim(),
         pickup_location: pickupLocation.trim(),
         drop_location: dropLocation.trim(),
         pickup_date: pickupDate,
@@ -197,33 +190,15 @@ export default function CabsPage() {
 
                 <div className="mt-4 rounded-lg bg-sand/30 p-3.5 text-xs">
                   <div className="flex justify-between py-1 text-charcoal-soft">
-                    <span>Base Fare</span>
-                    <span className="font-semibold text-forest">
-                      {confirmed.currency} {confirmed.base_fare.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="flex justify-between py-1 text-charcoal-soft">
-                    <span>Convenience Fee</span>
-                    <span className="font-semibold text-forest">
-                      {confirmed.currency} {confirmed.convenience_fee.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="flex justify-between py-1 text-charcoal-soft">
-                    <span>GST</span>
-                    <span className="font-semibold text-forest">
-                      {confirmed.currency} {confirmed.gst.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="mt-1 flex justify-between border-t border-sand pt-2 font-bold text-forest">
-                    <span>Estimated Total</span>
-                    <span className="text-lg text-terracotta">
-                      {confirmed.currency} {confirmed.total_amount.toLocaleString()}
+                    <span>Fare</span>
+                    <span className="font-bold text-terracotta">
+                      To be confirmed by our team
                     </span>
                   </div>
                 </div>
                 <p className="mt-3 text-[11px] leading-relaxed text-charcoal-soft">
-                  This is an estimate. Our team will confirm the final fare — subject to route,
-                  traffic and vehicle availability — before the trip.
+                  We will share a final quote for this trip — subject to route,
+                  traffic and vehicle availability — before dispatch.
                 </p>
               </div>
 
@@ -270,35 +245,20 @@ export default function CabsPage() {
               </fieldset>
 
               {/* Cab type */}
-              <fieldset>
-                <legend className={labelClasses}>Choose Your Cab</legend>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {CAB_CATALOG.map((cab) => (
-                    <button
-                      key={cab.key}
-                      type="button"
-                      onClick={() => setCabType(cab.key)}
-                      aria-pressed={cabType === cab.key}
-                      className={`rounded-xl border p-4 text-left transition-colors ${
-                        cabType === cab.key
-                          ? "border-terracotta ring-1 ring-terracotta/40"
-                          : "border-line hover:border-terracotta/40"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-bold text-forest">{cab.label}</span>
-                        <span className="text-xs font-extrabold text-terracotta">
-                          ₹{cab.base_fare}+
-                        </span>
-                      </div>
-                      <p className="mt-1 text-xs leading-snug text-charcoal-soft">
-                        {cab.seats} seats &bull; {cab.luggage} &bull; ₹{cab.per_km}/km
-                      </p>
-                      <p className="mt-1.5 text-[11px] text-charcoal-soft/80">{cab.description}</p>
-                    </button>
-                  ))}
-                </div>
-              </fieldset>
+              <div>
+                <label htmlFor="cabType" className={labelClasses}>
+                  Cab Type / Vehicle Preference
+                </label>
+                <input
+                  id="cabType"
+                  type="text"
+                  required
+                  value={cabType}
+                  onChange={(e) => setCabType(e.target.value)}
+                  placeholder="e.g. Sedan, SUV, Innova, Tempo Traveller"
+                  className={`${fieldClasses} mt-2`}
+                />
+              </div>
 
               {/* Route + schedule */}
               <div className="grid gap-4 sm:grid-cols-2">
@@ -372,7 +332,7 @@ export default function CabsPage() {
                     className={`${fieldClasses} mt-2`}
                   />
                   <p className="mt-1 text-[11px] text-charcoal-soft/70">
-                    Helps us estimate the fare. Overland estimates are welcome.
+                    Helps us provide an accurate quote. Overland estimates are welcome.
                   </p>
                 </div>
                 <div>
@@ -460,9 +420,9 @@ export default function CabsPage() {
 
               <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
                 <p className="text-xs text-charcoal-soft">
-                  Estimated total:{" "}
+                  Fare:{" "}
                   <span className="text-base font-extrabold text-terracotta">
-                    ₹{fare.total.toLocaleString()}
+                    Price on request
                   </span>
                 </p>
                 <Button type="submit" variant="secondary" disabled={isSubmitting}>
@@ -471,33 +431,20 @@ export default function CabsPage() {
               </div>
             </form>
 
-            {/* Fare summary sidebar */}
+            {/* Price summary sidebar */}
             <aside className="h-fit space-y-5">
               <div className="rounded-2xl bg-white p-6 shadow-xl ring-1 ring-black/5">
-                <h3 className="font-display text-lg font-bold text-forest">Fare Estimate</h3>
+                <h3 className="font-display text-lg font-bold text-forest">Fare</h3>
                 <div className="mt-4 space-y-2 text-sm">
                   <div className="flex justify-between text-charcoal-soft">
-                    <span>
-                      {selectedCab?.label} Base ({distance} km)
-                    </span>
-                    <span className="font-semibold text-forest">₹{fare.base_fare.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between text-charcoal-soft">
-                    <span>Convenience Fee</span>
-                    <span className="font-semibold text-forest">₹{fare.convenience_fee}</span>
-                  </div>
-                  <div className="flex justify-between text-charcoal-soft">
-                    <span>GST (5%)</span>
-                    <span className="font-semibold text-forest">₹{fare.gst.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between border-t border-line pt-3 font-bold text-forest">
-                    <span>Estimated Total</span>
-                    <span className="text-lg text-terracotta">₹{fare.total.toLocaleString()}</span>
+                    <span>Your trip ({distance} km)</span>
+                    <span className="font-extrabold text-terracotta">Price on request</span>
                   </div>
                 </div>
                 <p className="mt-3 text-[11px] leading-relaxed text-charcoal-soft">
-                  Final price is confirmed by our team once the request reaches us. No advance
-                  payment required to place the request.
+                  We do not charge a published rate. Our team shares a confirmed
+                  quote for your route before the trip — no advance payment
+                  required to place the request.
                 </p>
               </div>
 

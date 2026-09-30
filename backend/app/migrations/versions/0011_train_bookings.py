@@ -1,7 +1,7 @@
 """add train bookings
 
 Revision ID: 0011
-Revises: 0010
+Revises: 0011_database_revision_marker
 Create Date: 2026-09-23
 """
 from typing import Sequence, Union
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 
 revision: str = "0011"
-down_revision: Union[str, None] = "0010"
+down_revision: Union[str, None] = "0011_database_revision_marker"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

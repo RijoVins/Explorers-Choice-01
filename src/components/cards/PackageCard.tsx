@@ -1,16 +1,18 @@
 import Link from "next/link";
 import type { CatalogPackage } from "@/lib/catalog";
 import { formatMoney } from "@/lib/catalog";
-import { SafeImage } from "@/components/cards/SafeImage";
+import { SmartImage } from "@/components/ui/SmartImage";
 
 export function PackageCard({ pkg }: { pkg: CatalogPackage }) {
   return (
     <article className="group flex flex-col overflow-hidden rounded-2xl border border-line bg-cream shadow-card transition-transform duration-200 hover:-translate-y-1">
       <Link href={`/packages/${pkg.slug}`} className="relative block aspect-[3/2] overflow-hidden bg-sand">
-        <SafeImage
+        <SmartImage
           src={pkg.image}
           alt={pkg.name}
+          fill
           sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+          className="object-cover transition-transform duration-500 group-hover:scale-105"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-forest-dark/50 to-transparent" />
         {pkg.country ? (

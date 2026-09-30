@@ -145,7 +145,7 @@ export default function ContactPage() {
                 </div>
                 <div>
                   <dt className="font-semibold text-charcoal">Phone</dt>
-                  <dd className="mt-1 text-charcoal-soft">8940185116</dd>
+                  <dd className="mt-1 text-charcoal-soft">+91&nbsp;&nbsp;8940185116</dd>
                 </div>
                 <div>
                   <dt className="font-semibold text-charcoal">Office</dt>
