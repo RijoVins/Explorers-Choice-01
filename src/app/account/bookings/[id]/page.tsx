@@ -137,27 +137,36 @@ function TripInfoSection({ pkg }: { pkg: PackageDetail }) {
             </ul>
           </div>
         )}
-        {pkg.important_information && (
+        {pkg.important_information.length > 0 ? (
           <div className="rounded-xl border border-terracotta/20 bg-sand-light/40 p-4">
             <p className="font-semibold text-forest">Important information</p>
-            <p className="mt-1 text-charcoal-soft">{pkg.important_information}</p>
+            <ul className="mt-2 space-y-1.5 text-charcoal-soft">
+              {pkg.important_information.map((item) => (
+                <li key={item} className="flex items-start gap-2">
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-terracotta" aria-hidden="true" />
+                  {item}
+                </li>
+              ))}
+            </ul>
           </div>
-        )}
+        ) : null}
       </div>
     </section>
   );
 }
 
-function useBookingDetail(bookingId: number) {
+function useBookingDetail(bookingId: number | null) {
   const [data, setData] = useState<BookingDetail | null>(null);
   const [pkg, setPkg] = useState<PackageDetail | null>(null);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(bookingId !== null);
 
   useEffect(() => {
-    if (!Number.isFinite(bookingId)) return;
+    if (bookingId === null) return;
+    let cancelled = false;
     fetchBookingDetail(bookingId)
       .then(async (booking) => {
+        if (cancelled) return;
         setData(booking);
         if (booking.package_slug) {
           try {
@@ -167,8 +176,15 @@ function useBookingDetail(bookingId: number) {
           }
         }
       })
-      .catch((err) => setError(err?.message ?? "Booking not found."))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        if (!cancelled) setError(err?.message ?? "Booking not found.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [bookingId]);
 
   return { data, pkg, error, loading };
@@ -176,10 +192,13 @@ function useBookingDetail(bookingId: number) {
 
 export default function BookingDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: idStr } = use(params);
-  const bookingId = Number(idStr);
+  const bookingId = /^\d+$/.test(idStr) ? Number(idStr) : null;
   const { data, pkg, error, loading } = useBookingDetail(bookingId);
 
   if (loading) return <Container className="py-20 text-center text-charcoal-soft">Loading trip details…</Container>;
+  if (bookingId === null) {
+    return <Container className="py-20 text-center text-charcoal-soft">That booking reference is not valid.</Container>;
+  }
   if (error || !data) return <Container className="py-20 text-center text-charcoal-soft">{error || "Booking not found"}</Container>;
 
   const paidAmount = data.payments.filter((p) => p.status === "PAID").reduce((sum, p) => sum + p.amount, 0);

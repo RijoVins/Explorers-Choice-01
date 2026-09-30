@@ -1,5 +1,6 @@
 import type { UserProfile } from "@/lib/auth";
 import type { BookingMode } from "@/lib/bookingMeta";
+import { formatMoney } from "@/lib/bookingMeta";
 
 import { getApiBaseUrl } from "@/lib/api";
 
@@ -274,6 +275,16 @@ export type PackageFormPayload = {
   is_active: boolean;
 };
 
+export type ItineraryDayInput = {
+  day_number: number;
+  title: string;
+  description: string;
+  activities: string[];
+  meals: string;
+  accommodation: string;
+  transportation: string;
+};
+
 export type CustomerStory = {
   id: number;
   customer_name: string;
@@ -402,6 +413,11 @@ export const adminApi = {
   package: (id: number) => request<Package>(`/admin/packages/${id}`),
   createPackage: (data: PackageFormPayload) => request<Package>("/admin/packages", { method: "POST", body: JSON.stringify(data) }),
   updatePackage: (id: number, data: Partial<PackageFormPayload>) => request<Package>(`/admin/packages/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  replaceItinerary: (packageId: number, days: ItineraryDayInput[]) =>
+    request<Package>(`/admin/packages/${packageId}/itinerary`, {
+      method: "PUT",
+      body: JSON.stringify(days),
+    }),
   deletePackage: (id: number, hard = false) =>
     request<void>(`/admin/packages/${id}${hard ? "?hard=true" : ""}`, { method: "DELETE" }),
 
@@ -495,10 +511,5 @@ export function adminDocumentUrl(documentId: number): string {
   return `${apiBase}/api/admin/documents/${documentId}/download`;
 }
 
-export function formatMoneyAmount(amount: number, currency?: string): string {
-  try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency: currency ?? "INR" }).format(amount);
-  } catch {
-    return `${currency ?? "₹"}${amount}`;
-  }
-}
+/** Alias kept for the admin call sites; delegates to the canonical formatter. */
+export const formatMoneyAmount = formatMoney;

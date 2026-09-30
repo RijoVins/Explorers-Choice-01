@@ -9,7 +9,7 @@ const externalApi = process.env.NEXT_PUBLIC_EXPLORERS_API_URL ? ` ${process.env.
 const isProd = process.env.NODE_ENV === "production";
 const lanApiSource = isProd
   ? ""
-  : " http://*.localhost:8000 http://192.168.*.*:8000 http://10.*.*.*:8000 http://172.16.*.*:8000 http://172.17.*.*:8000 http://172.18.*.*:8000 http://172.19.*.*:8000 http://172.2*.*.*:8000 http://172.30.*.*:8000 http://172.31.*.*:8000";
+  : " http://127.0.0.1:8000 ws://localhost:3000 ws://127.0.0.1:3000";
 
 const securityHeaders = [
   { key: "X-Frame-Options", value: "DENY" },

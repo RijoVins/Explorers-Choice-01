@@ -56,3 +56,6 @@ next-env.d.ts
 .env
 .env.local
 !.env.example
+
+# Database TLS certificates (per-developer, e.g. TiDB Cloud CA)
+/backend/certs/

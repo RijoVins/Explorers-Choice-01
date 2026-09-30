@@ -48,12 +48,30 @@ class DestinationUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class DestinationRead(DestinationBase):
+class DestinationRead(BaseModel):
+    """Read schema for Destination — tolerates missing MySQL columns."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    created_at: datetime
-    updated_at: datetime
+    name: str
+    # MySQL table only has destination_id + name; all other fields are optional
+    slug: str = ""
+    country: str = ""
+    region: str = ""
+    short_description: str = ""
+    description: str = ""
+    hero_image: str = ""
+    gallery: list = []
+    best_time: str = ""
+    recommended_duration: str = ""
+    highlights: list = []
+    things_to_do: list = []
+    travel_information: list = []
+    is_featured: bool = False
+    is_active: bool = True
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 # ---------------------------------------------------------------------------
@@ -170,25 +188,71 @@ class PackageFaqRead(PackageFaqBase):
     id: int
 
 
-class PackageRead(PackageBase):
+class PackageRead(BaseModel):
+    """Read schema for Package — tolerates missing MySQL columns."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    created_at: datetime
-    updated_at: datetime
+    name: str
+    destination_id: Optional[int] = None
+    slug: str = ""
+    short_description: str = ""
+    description: str = ""
+    duration_days: int = 0
+    duration_nights: int = 0
+    starting_price: float = 0.0
+    currency: str = "INR"
+    hero_image: str = ""
+    gallery: list = []
+    highlights: list = []
+    included: list = []
+    excluded: list = []
+    accommodation_summary: str = ""
+    transportation_summary: str = ""
+    meal_summary: str = ""
+    cancellation_policy: str = ""
+    important_information: list = []
+    booking_mode: str = "REQUEST_ONLY"
+    is_featured: bool = False
+    is_active: bool = False
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     destination: Optional[DestinationRead] = None
-    itinerary: list[ItineraryDayRead] = []
-    faqs: list[PackageFaqRead] = []
+    itinerary: list = []
+    faqs: list = []
 
 
-class PackageSummary(PackageBase):
-    """Lightweight package read for listing views (avoids heavy nested data)."""
+class PackageSummary(BaseModel):
+    """Lightweight package read for listing views — tolerates missing MySQL columns."""
 
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    created_at: datetime
-    updated_at: datetime
+    name: str
+    destination_id: Optional[int] = None
+    slug: str = ""
+    short_description: str = ""
+    description: str = ""
+    duration_days: int = 0
+    duration_nights: int = 0
+    starting_price: float = 0.0
+    currency: str = "INR"
+    hero_image: str = ""
+    gallery: list = []
+    highlights: list = []
+    included: list = []
+    excluded: list = []
+    accommodation_summary: str = ""
+    transportation_summary: str = ""
+    meal_summary: str = ""
+    cancellation_policy: str = ""
+    important_information: list = []
+    booking_mode: str = "REQUEST_ONLY"
+    is_featured: bool = False
+    is_active: bool = False
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     destination: Optional[DestinationRead] = None
 
 
@@ -598,13 +662,25 @@ class CustomerStoryUpdate(BaseModel):
     is_published: Optional[bool] = None
 
 
-class CustomerStoryRead(CustomerStoryBase):
+class CustomerStoryRead(BaseModel):
+    """Read schema for CustomerStory — tolerates missing MySQL columns."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    package_name: str
-    created_at: datetime
-    updated_at: datetime
+    # MySQL stories table only has: story_id, user_id, booking_item_id,
+    # title, content, status, published_at, created_at
+    customer_name: str = "A traveller"
+    destination: str = ""
+    package_id: Optional[int] = None
+    package_name: str = ""
+    story: str = ""
+    photos: list = []
+    travel_date: Optional[date] = None
+    is_featured: bool = False
+    is_published: bool = False
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 class OfferBase(BaseModel):
@@ -785,24 +861,24 @@ class HotelRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    slug: str
-    name: str
-    location: str
-    destination: str
-    tagline: str
-    description: str
-    image: str
-    price_per_night: float
-    currency: str
-    amenities: list[str]
-    highlights: list[str]
-    created_at: datetime
-    updated_at: datetime
+    slug: str = ""
+    name: str = ""
+    location: str = ""
+    destination: str = ""
+    tagline: str = ""
+    description: str = ""
+    image: str = ""
+    price_per_night: float = 0.0
+    currency: str = "INR"
+    amenities: list[str] = Field(default_factory=list)
+    highlights: list[str] = Field(default_factory=list)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class HotelOwnerRead(HotelRead):
-    owner_id: int
-    is_published: bool
+    owner_id: int = 0
+    is_published: bool = True
 
 
 # ---------------------------------------------------------------------------

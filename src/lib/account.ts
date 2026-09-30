@@ -67,32 +67,47 @@ export type PackageDetail = {
   accommodation_summary: string;
   transportation_summary: string;
   meal_summary: string;
-  important_information: string;
+  important_information: string[];
 };
 
 import { getApiBaseUrl } from "@/lib/api";
 
+function accountErrorMessage(response: Response, fallback: string): string {
+  if (response.status === 401) return "Your session has expired. Please sign in again.";
+  return fallback;
+}
+
+/** Throw on failure instead of returning `[]`: an API outage and an empty
+ * account must look different to the caller. */
 export async function fetchMyBookings(): Promise<BookingSummary[]> {
   const response = await fetch(`${getApiBaseUrl()}/api/account`, { credentials: "include" });
-  if (!response.ok) return [];
+  if (!response.ok) {
+    throw new Error(
+      accountErrorMessage(response, "We could not load your bookings. Please try again shortly."),
+    );
+  }
   return (await response.json()) as BookingSummary[];
 }
 
 export async function fetchBookingDetail(bookingId: number): Promise<BookingDetail> {
   const response = await fetch(`${getApiBaseUrl()}/api/account/${bookingId}`, { credentials: "include" });
-  if (!response.ok) throw new Error("Booking not found");
+  if (!response.ok) {
+    throw response.status === 401
+      ? new Error("Your session has expired. Please sign in again.")
+      : new Error("Booking not found");
+  }
   return (await response.json()) as BookingDetail;
 }
 
 export async function fetchMyPayments(bookingId: number): Promise<PaymentRecord[]> {
   const response = await fetch(`${getApiBaseUrl()}/api/account/${bookingId}/payments`, { credentials: "include" });
-  if (!response.ok) return [];
+  if (!response.ok) throw new Error("We could not load your payments right now.");
   return (await response.json()) as PaymentRecord[];
 }
 
 export async function fetchMyDocuments(bookingId: number): Promise<DocumentRecord[]> {
   const response = await fetch(`${getApiBaseUrl()}/api/account/${bookingId}/documents`, { credentials: "include" });
-  if (!response.ok) return [];
+  if (!response.ok) throw new Error("We could not load your documents right now.");
   return (await response.json()) as DocumentRecord[];
 }
 

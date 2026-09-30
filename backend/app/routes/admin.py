@@ -279,15 +279,6 @@ def download_document(
 
 
 # ---------------------------------------------------------------------------
-# Public customer stories (no auth required)
-# ---------------------------------------------------------------------------
-@router.get("/customer-stories", response_model=list[schemas.CustomerStoryRead])
-def public_customer_stories(db: Session = Depends(get_db)):
-    """List published customer stories for public display."""
-    return crud.list_customer_stories(db, published_only=True)
-
-
-# ---------------------------------------------------------------------------
 # Offers + customer stories (CONTENT permission)
 # ---------------------------------------------------------------------------
 @router.get("/offers", response_model=list[schemas.OfferRead])
@@ -322,6 +313,12 @@ def admin_delete_offer(offer_id: int, db: Session = Depends(get_db),
 
 @router.get("/customer-stories", response_model=list[schemas.CustomerStoryRead])
 def admin_stories(db: Session = Depends(get_db), user=Depends(require_admin)):
+    """All stories including unpublished drafts.
+
+    The public, unauthenticated list lives at GET /api/customer-stories in
+    routes/stories.py. Keeping it out of this router means this endpoint is no
+    longer shadowed and staff can finally see drafts.
+    """
     return crud.list_customer_stories(db)
 
 

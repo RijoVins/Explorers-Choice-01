@@ -1,68 +1,47 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Container } from "@/components/ui/Container";
 import { Button } from "@/components/ui/Button";
+import { SafeImage } from "@/components/cards/SafeImage";
 import { BookNowCta } from "@/components/cta/BookNowCta";
-import { getApiBaseUrl } from "@/lib/api";
-import { stories as fallbackStories } from "@/data/stories";
+import { getStory } from "@/lib/stories";
 
 export const revalidate = 60;
+export const dynamicParams = true;
 
-type StoryOutput = {
-  id: number;
-  slug: string;
-  customerName: string;
-  packageName: string;
-  destination: string;
-  travelDate: string;
-  title?: string;
-  excerpt?: string;
-  story: string;
-  image?: string;
-  photos: string[];
-};
-
-async function getStories(): Promise<StoryOutput[]> {
-  try {
-    const res = await fetch(`${getApiBaseUrl()}/api/customer-stories`, { next: { revalidate: 60 } });
-    if (!res.ok) return fallbackStories as unknown as StoryOutput[];
-    const data = await res.json();
-    return data.map((d: Record<string, unknown>) => ({
-      ...d,
-      slug: String(d.id),
-      customerName: String(d.customer_name || ""),
-      packageName: String(d.package_name || ""),
-      destination: String(d.destination || ""),
-      travelDate: d.travel_date ? new Date(String(d.travel_date)).toLocaleDateString(undefined, { month: "long", year: "numeric" }) : "",
-      story: String(d.story || ""),
-      photos: Array.isArray(d.photos) ? d.photos.map(String) : [],
-    })) as StoryOutput[];
-  } catch {
-    return fallbackStories as unknown as StoryOutput[];
-  }
-}
-
-export async function generateStaticParams() {
-  return fallbackStories.map((s) => ({ slug: s.slug }));
-}
-
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
   const { slug } = await params;
-  const stories = await getStories();
-  const story = stories.find((s) => s.slug === slug || String(s.id) === slug);
-  if (!story) return { title: "Story not found" };
-  return { title: story.title || `${story.customerName}'s Story`, description: story.excerpt || story.story.slice(0, 160) } satisfies Metadata;
+  const id = Number(slug);
+  if (!Number.isInteger(id)) return { title: "Story not found" };
+  const result = await getStory(id);
+  if (!result.ok || !result.data) return { title: "Story not found" };
+  return {
+    title: `${result.data.customerName}'s Story`,
+    description: result.data.excerpt || result.data.story.slice(0, 160),
+  } satisfies Metadata;
 }
 
-export default async function StoryDetail({ params }: { params: Promise<{ slug: string }> }) {
+export default async function StoryDetail({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
   const { slug } = await params;
-  const stories = await getStories();
-  const story = stories.find((s) => s.slug === slug || String(s.id) === slug);
+  const id = Number(slug);
+  if (!Number.isInteger(id)) notFound();
+
+  const result = await getStory(id);
+  if (!result.ok) throw new Error(result.error);
+  const story = result.data;
   if (!story) notFound();
 
-  const more = stories.filter((s) => s.slug !== slug && String(s.id) !== slug).slice(0, 3);
+  const paragraphs = story.story.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  const image = story.photos[0] || null;
 
   return (
     <>
@@ -75,43 +54,49 @@ export default async function StoryDetail({ params }: { params: Promise<{ slug: 
         </Link>
         <div className="mt-8">
           <div className="flex items-center gap-3 text-xs font-semibold uppercase tracking-wide text-charcoal-soft">
-            <span className="text-terracotta">{story.packageName || "Explorers Choice"}</span>
-            <span aria-hidden="true">·</span>
-            <span>{story.travelDate || "Journey"}</span>
+            {story.packageName ? (
+              <>
+                <span className="text-terracotta">{story.packageName}</span>
+                <span aria-hidden="true">·</span>
+              </>
+            ) : null}
+            {story.destination ? <span>{story.destination}</span> : null}
           </div>
           <h1 className="mt-4 font-display text-4xl leading-tight text-forest sm:text-5xl">
-            {story.title || `${story.customerName}'s Story`}
+            {story.customerName}&apos;s story
           </h1>
-          <p className="mt-6 font-display text-2xl leading-relaxed text-charcoal">
-            &quot;{story.excerpt || story.story.slice(0, 160)}...&quot;
-          </p>
-        </div>
-
-        <div className="mt-10 overflow-hidden rounded-3xl">
-          <Image
-            src={story.image || (story.photos && story.photos[0]) || "https://images.unsplash.com/photo-1501785888041-af3ef285b470"}
-            alt={story.title || "Story image"}
-            width={1200}
-            height={800}
-            className="h-auto w-full object-cover"
-          />
-        </div>
-
-        <article className="mt-10 space-y-6">
-          {(Array.isArray((story as unknown as { body?: unknown }).body)
-            ? ((story as unknown as { body: string[] }).body)
-            : String(story.story || "").split("\n\n")
-          ).map((paragraph, index) => (
-            <p key={index} className="text-lg leading-relaxed text-charcoal-soft">
-              {paragraph}
+          {story.excerpt ? (
+            <p className="mt-6 font-display text-2xl leading-relaxed text-charcoal">
+              &quot;{story.excerpt}&quot;
             </p>
-          ))}
-        </article>
+          ) : null}
+        </div>
+
+        {image ? (
+          <div className="mt-10 overflow-hidden rounded-3xl">
+            <SafeImage
+              src={image}
+              alt={story.customerName}
+              sizes="(min-width: 768px) 48rem, 100vw"
+              className="h-auto w-full object-cover"
+            />
+          </div>
+        ) : null}
+
+        {paragraphs.length > 0 ? (
+          <article className="mt-10 space-y-6">
+            {paragraphs.map((paragraph, index) => (
+              <p key={index} className="text-lg leading-relaxed text-charcoal-soft">
+                {paragraph}
+              </p>
+            ))}
+          </article>
+        ) : null}
 
         <div className="mt-12 border-t border-line pt-6">
           <p className="text-sm text-charcoal-soft">
-            — <span className="font-semibold text-charcoal">{story.customerName}</span>, travelled on{" "}
-            {story.packageName || "a journey"}
+            — <span className="font-semibold text-charcoal">{story.customerName}</span>
+            {story.packageName ? <> travelled on {story.packageName}</> : " travelled with Explorers Choice"}
           </p>
         </div>
 
@@ -124,29 +109,6 @@ export default async function StoryDetail({ params }: { params: Promise<{ slug: 
           </Button>
         </div>
       </Container>
-
-      {more.length > 0 && (
-        <section className="mt-20 border-t border-line bg-ivory-warm py-16">
-          <Container>
-            <h2 className="font-display text-3xl text-forest">More stories</h2>
-            <div className="mt-8 grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
-              {more.map((s) => (
-                <article key={s.slug} className="group overflow-hidden rounded-2xl border border-line bg-cream shadow-card">
-                  <Link href={`/stories/${s.slug || s.id}`} className="relative block aspect-[3/2] overflow-hidden bg-sand">
-                    <Image src={s.image || (s.photos && s.photos[0]) || "https://images.unsplash.com/photo-1501785888041-af3ef285b470"} alt={s.title || "Story"} fill sizes="(min-width:1024px) 33vw, (min-width:640px) 50vw, 100vw" className="object-cover transition-transform duration-500 group-hover:scale-105" />
-                  </Link>
-                  <div className="p-6">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-terracotta">{s.packageName || s.destination}</p>
-                    <Link href={`/stories/${s.slug || s.id}`}>
-                      <h3 className="mt-2 font-display text-xl leading-snug text-forest group-hover:text-forest-light">{s.title || `${s.customerName}'s Story`}</h3>
-                    </Link>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </Container>
-        </section>
-      )}
 
       <BookNowCta
         heading="Ready to write your own story?"

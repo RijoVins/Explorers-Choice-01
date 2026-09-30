@@ -7,6 +7,7 @@ import { Container } from "@/components/ui/Container";
 import { Button } from "@/components/ui/Button";
 import { GoogleSignInButton } from "@/components/ui/GoogleSignInButton";
 import { useAuth } from "@/components/providers";
+import { postLoginPath, roleHomePath } from "@/lib/auth";
 
 const fieldClasses =
   "w-full rounded-xl border border-line bg-white px-4 py-3 text-sm text-charcoal placeholder:text-charcoal-soft/60 focus:border-terracotta focus:outline-none";
@@ -39,19 +40,14 @@ function LoginContent() {
     setError(""); setLoading(true);
     try {
       const loggedInUser = await login(email, password);
-      
-      // Auto-route users based on their role if they didn't come from a specific protected page
-      if (!searchParams.has("redirect")) {
-        if (loggedInUser.is_staff) {
-          router.push("/admin");
-        } else if (loggedInUser.role === "HOTEL_OWNER") {
-          router.push("/hotel-owner");
-        } else {
-          router.push("/account");
-        }
-      } else {
-        router.push(redirect);
-      }
+
+      // Only honour an explicit ?redirect= when the user's role may enter that
+      // area. Otherwise fall back to their role's home page. This stops a
+      // customer bounced from /admin from looping between /admin and /login.
+      const target = searchParams.has("redirect")
+        ? postLoginPath(loggedInUser, rawRedirect)
+        : roleHomePath(loggedInUser);
+      router.push(target);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign in failed. Please try again.");
     } finally {

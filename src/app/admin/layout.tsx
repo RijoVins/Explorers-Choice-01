@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers";
+import { isStaffRole } from "@/lib/auth";
 import { Container } from "@/components/ui/Container";
 
 const navItems = [
@@ -33,7 +34,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [navOpen, setNavOpen] = useState(false);
 
   useEffect(() => {
-    if (!loading && (!user || !user.is_staff)) {
+    // Access is gated by both the backend `is_staff` flag and a real staff role
+    // so a mislabelled profile can never slip into the workspace. The login
+    // page now honours ?redirect= only when the role may enter this area, which
+    // stops the old customer → /admin → /login loop.
+    if (!loading && (user === null || !user.is_staff || !isStaffRole(user.role))) {
       router.replace(`/login?redirect=${encodeURIComponent(pathname)}`);
     }
   }, [loading, user, router, pathname]);
@@ -51,10 +56,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
   };
 
-  if (loading || !user || !user.is_staff) {
+  if (loading || user === null || !user.is_staff || !isStaffRole(user.role)) {
     return (
       <div className="min-h-full flex items-center justify-center bg-ivory px-6">
-        <p className="text-sm text-charcoal-soft">Loading workspace…</p>
+        <p className="text-sm text-charcoal-soft">Checking workspace access…</p>
       </div>
     );
   }

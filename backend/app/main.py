@@ -11,10 +11,10 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError, OperationalError
 
 from .config import settings
-from .database import Base, engine, SessionLocal
+from .database import Base, engine, SessionLocal, dispose, provider
 from . import models, security
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -25,7 +25,7 @@ from .routes import auth as auth_router
 from .routes import bookings as bookings_router
 from .routes import cabs as cabs_router
 from .routes import destinations as destinations_router
-from .routes import enquiries as enquiries_router
+from .routes import enquiries as enquiries_router, stories as stories_router
 from .routes import hotels as hotels_router
 from .routes import oauth as oauth_router
 from .routes import packages as packages_router
@@ -36,7 +36,22 @@ def run_startup_migrations():
 
     BUG-09: migration failures now raise SystemExit so startup cannot continue
     against an outdated schema.
+
+    This runs ONLY for the Supabase/PostgreSQL provider. When
+    ``DATABASE_PROVIDER=mysql`` the MySQL schema is owned outside this
+    application, so Alembic is skipped entirely and startup performs a
+    read-only connectivity check instead. No table is ever created, altered or
+    dropped against MySQL.
     """
+    if not provider.run_migrations_on_startup():
+        logger.info(
+            "DATABASE_PROVIDER=%s: skipping Alembic (schema is managed outside "
+            "this application). Verifying connectivity read-only instead.",
+            provider.name,
+        )
+        check_database_connectivity()
+        return
+
     try:
         backend_dir = Path(__file__).resolve().parent.parent
         alembic_ini = backend_dir / "alembic.ini"
@@ -55,12 +70,35 @@ def run_startup_migrations():
         raise SystemExit(1) from exc
 
 
+def check_database_connectivity():
+    """Read-only startup probe. Issues SELECT 1 and nothing else.
+
+    Never falls back to the other provider: if the selected database is
+    unreachable the process refuses to start.
+    """
+    try:
+        with SessionLocal() as db:
+            db.execute(text("SELECT 1"))
+        logger.info("Database connectivity OK (provider=%s).", provider.name)
+    except Exception as exc:
+        logger.critical(
+            "Database unreachable (provider=%s), refusing to start: %s",
+            provider.name, exc,
+        )
+        raise SystemExit(1) from exc
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: ensure migrations are applied
+    # Startup: verify or migrate the selected database
     run_startup_migrations()
+    logger.info(
+        "Started with DATABASE_PROVIDER=%s (dialect=%s).",
+        provider.name, engine.dialect.name,
+    )
     yield
-    # Shutdown
+    # Shutdown: return pooled connections cleanly
+    dispose()
 
 
 app = FastAPI(
@@ -81,6 +119,37 @@ async def integrity_error_handler(request: Request, exc: IntegrityError):
     return JSONResponse(
         status_code=409,
         content={"detail": "This record is referenced by other data and cannot be deleted or duplicated."},
+    )
+
+
+@app.exception_handler(OperationalError)
+async def operational_error_handler(request: Request, exc: OperationalError):
+    """The selected database is unreachable.
+
+    The request fails with 503. The application never retries against the
+    other provider, because silently switching backends mid-request would
+    read or write the wrong database.
+    """
+    logger.error("OperationalError on %s %s: %s", request.method, request.url.path, exc.orig)
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": "Database temporarily unavailable. Please try again shortly.",
+            "provider": provider.name,
+        },
+    )
+
+
+@app.exception_handler(DBAPIError)
+async def dbapi_error_handler(request: Request, exc: DBAPIError):
+    """Catch-all for driver-level database errors (no fallback, no leakage)."""
+    logger.error("DBAPIError on %s %s: %s", request.method, request.url.path, exc.orig)
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": "Database error while processing the request.",
+            "provider": provider.name,
+        },
     )
 
 
@@ -152,13 +221,17 @@ app.include_router(packages_router.admin_router, prefix="/api/admin", tags=["adm
 app.include_router(bookings_router.admin_router, prefix="/api/admin", tags=["admin bookings"])
 app.include_router(admin_router.router, prefix="/api/admin", tags=["admin operations"])
 app.include_router(enquiries_router.router, prefix="/api/enquiries", tags=["public enquiries"])
+app.include_router(stories_router.router, prefix="/api", tags=["public stories"])
 
 @app.get("/api/health", tags=["system"])
 def health():
     try:
         with SessionLocal() as db:
             db.execute(text("SELECT 1"))
-        return {"status": "ok"}
+        return {"status": "ok", "provider": provider.name}
     except Exception as exc:
         logger.error("Health check failed: %s", exc)
-        return JSONResponse(status_code=503, content={"status": "error", "detail": "Database unreachable"})
+        return JSONResponse(
+            status_code=503,
+            content={"status": "error", "detail": "Database unreachable", "provider": provider.name},
+        )

@@ -151,3 +151,48 @@ export function googleLoginUrl(next?: string): string {
   const path = next && next.startsWith("/") && !next.startsWith("//") ? next : "/account";
   return `${API_URL}/auth/google?next=${encodeURIComponent(path)}`;
 }
+
+const STAFF_ROLES = new Set(["TRAVEL_AGENT", "MANAGER", "ACCOUNTANT", "ADMIN"]);
+
+/** A user is staff only when their role is in STAFF_ROLES — never is_staff alone. */
+export function isStaffRole(role?: string | null): boolean {
+  return Boolean(role && STAFF_ROLES.has(role));
+}
+
+const STAFF_PREFIXES = ["/admin"];
+const OWNER_PREFIXES = ["/hotel-owner"];
+
+/**
+ * Decide where a just-signed-in user may go. `requested` (the ?redirect= value)
+ * is honoured only when it belongs to an area their role can actually enter —
+ * otherwise they get their role's default landing page. This prevents the
+ * login?redirect=/admin loop that hit customers who were redirected from /admin
+ * and then bounced straight back.
+ */
+export function postLoginPath(user: UserProfile, requested?: string | null): string {
+  const path = requested && requested.startsWith("/") && !requested.startsWith("//")
+    ? requested
+    : "/account";
+  if (isStaffRole(user.role)) {
+    return STAFF_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`))
+      ? path
+      : "/admin";
+  }
+  if (user.role === "HOTEL_OWNER") {
+    return OWNER_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`))
+      ? path
+      : "/hotel-owner";
+  }
+  const restricted = [...STAFF_PREFIXES, ...OWNER_PREFIXES];
+  if (restricted.some((p) => path === p || path.startsWith(`${p}/`))) {
+    return "/account";
+  }
+  return path;
+}
+
+/** Default landing page for a signed-in user's role. */
+export function roleHomePath(user: UserProfile): string {
+  if (isStaffRole(user.role)) return "/admin";
+  if (user.role === "HOTEL_OWNER") return "/hotel-owner";
+  return "/account";
+}

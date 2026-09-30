@@ -1,11 +1,19 @@
 import type { MetadataRoute } from "next";
-import { stories } from "@/data/stories";
+import { getStories } from "@/lib/stories";
+import { getDestinations, getPackages } from "@/lib/catalog";
 
 const BASE = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
-const staticRoutes = ["", "/destinations", "/packages", "/about", "/stories", "/faq", "/contact", "/book"];
-
-type SlugSource = { slug: string };
+const staticRoutes = [
+  "",
+  "/destinations",
+  "/packages",
+  "/about",
+  "/stories",
+  "/faq",
+  "/contact",
+  "/book",
+];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const entries: MetadataRoute.Sitemap = staticRoutes.map((path) => ({
@@ -14,37 +22,32 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: path === "" ? 1 : 0.8,
   }));
 
-  for (const story of stories) {
+  // Stories are addressed by numeric id, never slugs.
+  const stories = await getStories();
+  for (const story of stories.ok ? stories.data : []) {
     entries.push({
-      url: `${BASE}/stories/${story.slug}`,
+      url: `${BASE}/stories/${story.id}`,
       changeFrequency: "monthly",
       priority: 0.6,
     });
   }
 
-  const { SERVER_API_URL: api } = await import("@/lib/api");
+  const destinations = await getDestinations();
+  for (const destination of destinations.ok ? destinations.data : []) {
+    entries.push({
+      url: `${BASE}/destinations/${destination.slug}`,
+      changeFrequency: "monthly",
+      priority: 0.7,
+    });
+  }
 
-  for (const [prefix, endpoint] of [
-    ["/destinations", "/destinations?active=true"],
-    ["/packages", "/packages"],
-  ] as const) {
-    try {
-      const res = await fetch(`${api}${endpoint}`, { next: { revalidate: 3600 } });
-      if (res.ok) {
-        const items = (await res.json()) as SlugSource[];
-        for (const item of items) {
-          if (item.slug) {
-            entries.push({
-              url: `${BASE}${prefix}/${item.slug}`,
-              changeFrequency: "monthly",
-              priority: 0.7,
-            });
-          }
-        }
-      }
-    } catch {
-      // API unavailable at build time — static routes still published.
-    }
+  const packages = await getPackages();
+  for (const pkg of packages.ok ? packages.data : []) {
+    entries.push({
+      url: `${BASE}/packages/${pkg.slug}`,
+      changeFrequency: "monthly",
+      priority: 0.7,
+    });
   }
 
   return entries;

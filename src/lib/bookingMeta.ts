@@ -55,18 +55,44 @@ export function bookingModeLabel(mode: string): string {
   return BOOKING_MODE_LABELS[mode as BookingMode] ?? mode;
 }
 
-export function formatMoney(amount: number, currency = "INR"): string {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 0,
-  }).format(amount);
+/**
+ * Single canonical money formatter for the whole site.
+ *
+ * The backend stores a real ISO currency code on every money-bearing row
+ * (Package, Booking, Payment, Hotel, TrainBooking, CabBooking), so the code is
+ * always taken from the record — never hardcoded to a symbol. An unrecognised
+ * or empty code degrades to "CODE 1,234" instead of throwing, because a bad
+ * currency on one record must not blank out an entire page.
+ */
+export function formatMoney(amount: number, currency?: string | null): string {
+  const code = (currency || "USD").trim().toUpperCase();
+  const value = Number.isFinite(amount) ? amount : 0;
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: code,
+      maximumFractionDigits: 0,
+    }).format(value);
+  } catch {
+    return `${code} ${value.toLocaleString("en-US")}`;
+  }
 }
 
+/**
+ * `formatDate` is for date-only values (travel dates, check-ins). Passing a
+ * bare date string to `new Date()` treats it as UTC midnight, which renders as
+ * the previous day for anyone west of Greenwich, so the local date is built
+ * component-by-component instead.
+ */
 export function formatDate(date: string): string {
-  return new Date(`${date}T00:00:00`).toLocaleDateString(undefined, {
-    month: "long",
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(date.trim());
+  const parsed = match
+    ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+    : new Date(date);
+  if (Number.isNaN(parsed.getTime())) return date;
+  return parsed.toLocaleDateString("en-GB", {
     day: "numeric",
+    month: "long",
     year: "numeric",
   });
 }

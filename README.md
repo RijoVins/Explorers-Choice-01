@@ -2,7 +2,14 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Development setup (team)
 
-The app is a Next.js frontend + a FastAPI backend on a shared PostgreSQL database.
+The app is a Next.js frontend + a FastAPI backend on a shared database. The
+backend supports two database providers, selected with one server-side
+setting: `DATABASE_PROVIDER=mysql` (MySQL 8 / MariaDB / TiDB) or
+`DATABASE_PROVIDER=supabase` (Supabase-hosted PostgreSQL).
+
+**See [DATABASE_PROVIDERS.md](DATABASE_PROVIDERS.md)** for provider selection,
+TLS requirements, verification commands, and what to do before switching back
+to Supabase.
 
 **Backend** (from the repo root, once):
 
@@ -23,16 +30,43 @@ source .venv/bin/activate
 
 ```bash
 python -m pip install -r requirements.txt
-cp .env.example .env            # fill in DATABASE_URL / SECRET_KEY / ADMIN_API_KEY
+cp .env.example .env            # set DATABASE_PROVIDER, then the matching credentials
+```
+
+For the PostgreSQL provider, apply the schema:
+
+```bash
+# only when DATABASE_PROVIDER=supabase
 python -m alembic upgrade head
 ```
 
-`DATABASE_URL` is required and must be the same shared PostgreSQL connection
-for every developer. Do not use `localhost` or `127.0.0.1` as the database
-host unless that address is a shared database service reachable by the whole
-team. The `.env` file is ignored by Git; share the variable name and approved
-connection details through your team's secret-sharing process, never through
-the repository.
+```bash
+# only when DATABASE_PROVIDER=mysql
+cd backend && python -m alembic -c alembic_mysql.ini upgrade head
+```
+
+The two providers use separate Alembic environments and each refuses to run
+against the other backend. Migrations are **never** applied automatically at
+startup: the backend only performs a read-only connectivity check, so apply
+them explicitly as above.
+
+All developers must use the same shared database. Do not use `localhost` or
+`127.0.0.1` as the database host unless that address is a shared database
+service reachable by the whole team. The `.env` file is ignored by Git; share
+variable names and approved connection details through your team's
+secret-sharing process, never through the repository.
+
+To check a MySQL connection read-only before starting the app:
+
+```bash
+backend/.venv/bin/python backend/scripts/db_check.py
+```
+
+Run the backend tests with:
+
+```bash
+cd backend && ./.venv/bin/python -m pytest tests/ -q
+```
 
 Then start both servers:
 

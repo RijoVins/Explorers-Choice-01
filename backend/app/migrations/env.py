@@ -13,6 +13,16 @@ from app.config import settings  # noqa: E402
 from app.database import Base  # noqa: E402
 import app.models  # noqa: E402, F401 — registers models with Base.metadata
 
+# The migration history in this directory targets PostgreSQL (it uses
+# postgresql.JSONB). Refuse to run it against MySQL, whose schema is owned
+# outside this application and must never be altered automatically.
+if settings.is_mysql:
+    raise RuntimeError(
+        "Alembic migrations target PostgreSQL and are disabled when "
+        "DATABASE_PROVIDER=mysql. The MySQL schema is managed externally. "
+        "Set DATABASE_PROVIDER=supabase to run migrations against PostgreSQL."
+    )
+
 config = context.config
 # alembic uses configparser under the hood, which treats % as an interpolation
 # token unless escaped as %%. We must escape url-encoded passwords to prevent errors.

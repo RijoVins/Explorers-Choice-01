@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { adminApi, type Dashboard } from "@/lib/admin";
-import { paymentStatusLabel } from "@/lib/bookingMeta";
+import { formatMoney, paymentStatusLabel } from "@/lib/bookingMeta";
 
 export default function AdminDashboardPage() {
   const [data, setData] = useState<Dashboard | null>(null);
@@ -91,7 +91,7 @@ export default function AdminDashboardPage() {
                   </div>
                   <div className="text-right">
                     <p className="font-display text-lg text-forest">
-                      {new Intl.NumberFormat(undefined, { style: "currency", currency: p.currency ?? "INR" }).format(p.amount)}
+                      {formatMoney(p.amount, p.currency)}
                     </p>
                     <span className="mt-0.5 inline-block rounded-full bg-ivory px-2.5 py-0.5 text-[11px] font-semibold text-forest">
                       {paymentStatusLabel(p.status)}

@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { adminApi, formatMoneyAmount, packageImageUrl, uploadPackageImage, type Package, type DestinationOption } from "@/lib/admin";
+import { useAuth } from "@/components/providers";
+import { ItineraryEditor } from "./ItineraryEditor";
 import { imageUrlError } from "@/lib/images";
 import { CLIENT_API_URL as API_URL } from "@/lib/api";
 
@@ -60,6 +62,11 @@ export default function AdminPackagesPage() {
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [uploading, setUploading] = useState(false);
+
+  const { user } = useAuth();
+  const editingPackage = editingId !== null
+    ? packages.find((p) => p.id === editingId) ?? null
+    : null;
 
   const load = useCallback(() => {
     adminApi
@@ -388,6 +395,17 @@ export default function AdminPackagesPage() {
               Cancel
             </button>
           </div>
+
+          {/* Itinerary — needs an existing package id, so it only appears while editing. */}
+          {editingPackage && (
+            <div className="mt-8">
+              <ItineraryEditor
+                packageId={editingPackage.id}
+                days={Array.isArray(editingPackage.itinerary) ? (editingPackage.itinerary as unknown as { id?: number; day_number: number; title: string; description: string; activities: string[]; meals: string; accommodation: string; transportation: string }[]) : []}
+                userRole={user?.role}
+              />
+            </div>
+          )}
         </section>
       )}
 

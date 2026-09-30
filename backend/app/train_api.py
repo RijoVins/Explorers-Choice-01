@@ -1,7 +1,5 @@
 """Train search, external API integration, PNR status, and booking support for Explorers Choice."""
 from datetime import date, datetime, timedelta
-import hashlib
-import json
 import logging
 import random
 import re
@@ -416,117 +414,265 @@ def get_station_by_code(code: str) -> dict[str, str]:
     return {"code": c, "name": f"Station ({c})", "city": c, "state": "India"}
 
 
-def calculate_availability_status(seed_val: str, travel_class: str) -> tuple[str, str]:
-    """Deterministically generate realistic seat availability based on seed."""
-    h = int(hashlib.md5(f"{seed_val}:{travel_class}".encode()).hexdigest(), 16)
-    slot = h % 100
-    if slot < 70:
-        seats = 12 + (h % 65)
-        return f"AVAILABLE-{seats}", "AVAILABLE"
-    elif slot < 85:
-        rac = 1 + (h % 12)
-        return f"RAC {rac}", "RAC"
+# ---------------------------------------------------------------------------
+# External Railway API parsing helpers (honest, validated responses only)
+# ---------------------------------------------------------------------------
+_CLASS_DEFAULT_FARES = {
+    "1A": 3200.0, "2A": 2050.0, "3A": 1450.0, "3E": 1050.0,
+    "CC": 950.0, "EC": 1750.0, "SL": 540.0, "2S": 350.0,
+}
+
+_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+
+def api_configured() -> bool:
+    return bool(settings.railway_api_key and settings.railway_api_key.strip())
+
+
+def _find(d: Any, *keys: str, default: Any = None) -> Any:
+    if isinstance(d, dict):
+        lowered = {str(k).lower(): v for k, v in d.items()}
+        for key in keys:
+            if key.lower() in lowered:
+                return lowered[key.lower()]
+    return default
+
+
+def _first(d: dict, *names: str, default: str = "") -> str:
+    for name in names:
+        val = _find(d, name)
+        if val is not None and not isinstance(val, bool) and str(val).strip():
+            return str(val).strip()
+    return default
+
+
+def _to_int(val: Any, default: int = 0) -> int:
+    try:
+        return int(float(str(val).strip()))
+    except (TypeError, ValueError):
+        return default
+
+
+def _to_float(val: Any, default: float = 0.0) -> float:
+    try:
+        f = float(str(val).strip())
+        return f if f > 0 else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _normalize_duration(raw: Any) -> str:
+    s = str(raw or "").strip()
+    if not s:
+        return ""
+    m = re.match(r"^(\d+):([0-5]?\d)$", s)
+    if m:
+        h, mi = int(m.group(1)), int(m.group(2))
+        return f"{h}h {mi:02d}m" if h else f"{mi:02d}m"
+    m = re.match(r"^\s*(\d+)\s*h(?:\s*([0-5]?\d)\s*m)?\s*$", re.sub(r"(?i)hrs?", "h", s))
+    if m:
+        h, mi = int(m.group(1)), int(m.group(2) or 0)
+        return f"{h}h {mi:02d}m"
+    return s
+
+
+def _parse_running_days(raw: Any) -> list[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        days = []
+        for item in raw:
+            day = str(item or "").strip()
+            if not day:
+                continue
+            if day.replace(" ", "").upper() in ("DAILY", "ALL", "ALLDAYS", "ROZ"):
+                return ["Daily"]
+            days.append(day.title())
+        return days or ["Daily"]
+    s = str(raw).upper().replace(" ", "").replace("-", "").replace(",", "").replace("_", "")
+    if s in ("DAILY", "ALL", "ALLDAYS", "ROZ"):
+        return ["Daily"]
+    if len(s) >= 7 and set(s[:7]) <= {"Y", "N"}:
+        days = [day for flag, day in zip(s[:7], _DAYS) if flag == "Y"]
+        return days or ["Daily"]
+    parts = [p.strip().title() for p in re.split(r"[,/]", str(raw)) if p.strip()]
+    return parts or ["Daily"]
+
+
+def _train_type(name: str, raw_type: Any = None) -> str:
+    rt = str(raw_type or "").upper()
+    if rt in ("VB", "VANDE_BHARAT", "VB_EXP"):
+        return "Vande Bharat"
+    n = name.upper()
+    if "VANDE" in n:
+        return "Vande Bharat"
+    if "RAJDHANI" in n:
+        return "Rajdhani"
+    if "SHATABDI" in n or "SHATABDEE" in n:
+        return "Shatabdi"
+    if "SUPERFAST" in n or " SF " in f" {n} ":
+        return "Superfast"
+    return "Express"
+
+
+def _class_availability(entry: dict) -> tuple[str, str]:
+    stype_raw = _first(entry, "avail_type", "status_type", "status")
+    avail_raw = _first(entry, "available", "availability", "avail_count", "avail")
+    status = avail_raw or stype_raw or "AVAILABLE"
+    blob = f"{stype_raw} {avail_raw}".upper()
+    if "RAC" in blob:
+        stype = "RAC"
+    elif "WAIT" in blob or re.search(r"\bWL\b", blob):
+        stype = "WL"
     else:
-        wl = 1 + (h % 25)
-        return f"WL {wl}", "WL"
+        stype = "AVAILABLE"
+    return status, stype
+
+
+def _class_fare(entry: dict, cls_code: str) -> float:
+    fare = entry.get("fare") if isinstance(entry, dict) else None
+    f = _to_float(fare, 0.0)
+    if f:
+        return f
+    return _CLASS_DEFAULT_FARES.get(cls_code.strip().upper(), 1500.0)
+
+
+def _normalize_class(c: Any, cls_code_hint: str) -> Optional[dict[str, Any]]:
+    entry = c if isinstance(c, dict) else {}
+    code = _first(entry, "class_code", "classType", "travel_class", "cls") or str(cls_code_hint or "")
+    code = code.strip().upper()
+    if not code:
+        return None
+    status, stype = _class_availability(entry)
+    return {
+        "travel_class": code,
+        "class_name": _first(entry, "class_name", "className", "desc") or CLASS_NAMES.get(code, code),
+        "fare": _class_fare(entry, code),
+        "status": status,
+        "status_type": stype,
+    }
+
+
+def _normalize_train(t: Any, from_code: str, to_code: str) -> Optional[dict[str, Any]]:
+    if not isinstance(t, dict):
+        return None
+    number = re.sub(r"\D", "", _first(t, "train_num", "train_number", "train_no", "number"))
+    if not number:
+        return None
+    name = _first(t, "train_name", "name") or f"Express {number}"
+    raw_classes = _find(t, "class_type", "classType", "classes", "availability")
+    if isinstance(raw_classes, dict):
+        raw_classes = _find(raw_classes, "class_type", "classes") or []
+    if not isinstance(raw_classes, list):
+        raw_classes = []
+    classes = []
+    seen = set()
+    for c in raw_classes:
+        hint = c["class_code"] if isinstance(c, dict) else c
+        norm = _normalize_class(c, hint)
+        if norm and norm["travel_class"] not in seen:
+            seen.add(norm["travel_class"])
+            classes.append(norm)
+    dep = _first(t, "departure_time", "from_std", "dep_time")
+    arr = _first(t, "arrival_time", "to_sta", "arr_time")
+    return {
+        "train_number": number,
+        "train_name": name,
+        "train_type": _train_type(name, _find(t, "train_type", "trainType")),
+        "from_station_code": _first(t, "from_stn_code", "from_station_code", "source_code") or from_code,
+        "from_station_name": _first(t, "from_stn_name", "from_station_name", "source", "origin")
+        or get_station_by_code(from_code)["name"],
+        "to_station_code": _first(t, "to_stn_code", "to_station_code", "dest_code") or to_code,
+        "to_station_name": _first(t, "to_stn_name", "to_station_name", "destination", "dest")
+        or get_station_by_code(to_code)["name"],
+        "departure_time": dep or "",
+        "arrival_time": arr or "",
+        "duration": _normalize_duration(_find(t, "duration", "travel_time", "running_time")),
+        "running_days": _parse_running_days(_find(t, "run_days", "running_days", "runningDays", "days_running")),
+        "classes": classes,
+        "has_pantry": bool(_to_int(_find(t, "has_pantry", "pantry"), 1)),
+    }
+
+
+def _extract_train_list(payload: Any) -> list[Any]:
+    if isinstance(payload, dict):
+        data = _find(payload, "data")
+        for key in ("train_between_station", "trainbetweenstations", "trains", "train_list", "trainlist"):
+            val = _find(data, key) if isinstance(data, dict) else None
+            if val is None:
+                val = _find(payload, key)
+            if isinstance(val, list):
+                return val
+        if isinstance(data, list):
+            return data
+    elif isinstance(payload, list):
+        return payload
+    return []
+
+
+async def _get_rapidapi(url_path: str, params: dict[str, str]) -> Any:
+    url = f"{settings.railway_api_url.rstrip('/')}/{url_path}"
+    headers = {
+        "x-rapidapi-key": settings.railway_api_key,
+        "x-rapidapi-host": settings.railway_api_host,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(url, headers=headers, params=params)
+        payload = resp.json()
+        if resp.status_code != 200 or not isinstance(payload, dict):
+            logger.warning("External Railway API %s returned HTTP %s", url_path, resp.status_code)
+            return None
+        if payload.get("status") is False:
+            logger.warning("External Railway API %s reported status: %s", url_path, payload.get("message"))
+            return None
+        return payload
+    except Exception as exc:
+        logger.warning("External Railway API %s failed: %s", url_path, exc)
+        return None
 
 
 async def fetch_trains_from_external_api(
     from_code: str, to_code: str, journey_date: date
 ) -> Optional[list[dict[str, Any]]]:
-    """Query external Indian Railways API if API key is provided."""
-    if not settings.railway_api_key or not settings.railway_api_key.strip():
+    """Query external Indian Railways API for original train schedules if an API key is available."""
+    if not api_configured():
         return None
-
-    try:
-        date_str = journey_date.strftime("%Y%m%d")
-        url = f"{settings.railway_api_url.rstrip('/')}/api/v3/trainBetweenStations"
-        headers = {
-            "x-rapidapi-key": settings.railway_api_key,
-            "x-rapidapi-host": settings.railway_api_host,
-        }
-        params = {
+    payload = await _get_rapidapi(
+        "api/v3/trainBetweenStations",
+        {
             "fromStationCode": from_code,
             "toStationCode": to_code,
-            "dateOfJourney": date_str,
-        }
-
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(url, headers=headers, params=params)
-            if resp.status_code == 200:
-                json_data = resp.json()
-                data = json_data.get("data", [])
-                if isinstance(data, list) and data:
-                    results = []
-                    for t in data:
-                        train_num = str(t.get("train_number", t.get("train_no", "")))
-                        train_name = str(t.get("train_name", "Express"))
-                        dep = str(t.get("from_std", "06:00"))
-                        arr = str(t.get("to_sta", "14:00"))
-                        dur = str(t.get("duration", "8h 00m"))
-                        classes = []
-                        raw_classes = t.get("class_type", ["3A", "2A", "SL"])
-                        for cls in raw_classes:
-                            fare = 850.0 if cls == "SL" else (1850.0 if cls == "3A" else 2850.0)
-                            status, stype = calculate_availability_status(f"{train_num}:{journey_date}", cls)
-                            classes.append({
-                                "travel_class": cls,
-                                "class_name": CLASS_NAMES.get(cls, cls),
-                                "fare": fare,
-                                "status": status,
-                                "status_type": stype,
-                            })
-                        results.append({
-                            "train_number": train_num,
-                            "train_name": train_name,
-                            "train_type": "Superfast" if "SF" in train_name else "Express",
-                            "from_station_code": from_code,
-                            "from_station_name": get_station_by_code(from_code)["name"],
-                            "to_station_code": to_code,
-                            "to_station_name": get_station_by_code(to_code)["name"],
-                            "departure_time": dep,
-                            "arrival_time": arr,
-                            "duration": dur,
-                            "running_days": ["Daily"],
-                            "classes": classes,
-                            "has_pantry": True,
-                        })
-                    return results
-    except Exception as exc:
-        logger.warning("External Railway API query failed: %s; using internal high-speed schedule database.", exc)
-    return None
+            "dateOfJourney": journey_date.strftime("%Y-%m-%d"),
+        },
+    )
+    if payload is None:
+        return None
+    results = []
+    seen = set()
+    for raw in _extract_train_list(payload):
+        train = _normalize_train(raw, from_code, to_code)
+        if not train or train["train_number"] in seen:
+            continue
+        seen.add(train["train_number"])
+        results.append(train)
+    return results or None
 
 
-async def search_trains_between_stations(
-    from_code: str, to_code: str, journey_date: date
-) -> list[dict[str, Any]]:
-    """Search trains between two stations on a given journey date."""
-    fc = from_code.strip().upper()
-    tc = to_code.strip().upper()
-
-    # 1. Try external API if configured
-    external_results = await fetch_trains_from_external_api(fc, tc, journey_date)
-    if external_results:
-        return external_results
-
-    # 2. Check catalog matches
-    matched_trains = []
+def _catalog_trains_for_route(fc: str, tc: str) -> list[dict[str, Any]]:
+    matched = []
     for t in POPULAR_TRAINS:
         if t["from_code"] == fc and t["to_code"] == tc:
-            # Build classes with live availability for the selected date
-            classes_with_avail = []
+            classes = []
             for c in t["classes"]:
-                cls = c["travel_class"]
-                status, stype = calculate_availability_status(f"{t['train_number']}:{journey_date}", cls)
-                classes_with_avail.append({
-                    "travel_class": cls,
-                    "class_name": CLASS_NAMES.get(cls, c["class_name"]),
+                classes.append({
+                    "travel_class": c["travel_class"],
+                    "class_name": CLASS_NAMES.get(c["travel_class"], c["class_name"]),
                     "fare": c["fare"],
-                    "status": status,
-                    "status_type": stype,
+                    "status": "",
+                    "status_type": "AVAILABLE",
                 })
-            
-            matched_trains.append({
+            matched.append({
                 "train_number": t["train_number"],
                 "train_name": t["train_name"],
                 "train_type": t["train_type"],
@@ -538,60 +684,24 @@ async def search_trains_between_stations(
                 "arrival_time": t["arrival_time"],
                 "duration": t["duration"],
                 "running_days": t["running_days"],
-                "classes": classes_with_avail,
+                "classes": classes,
                 "has_pantry": t["has_pantry"],
             })
+    return matched
 
-    # 3. If route is not directly in popular pairs, generate dynamic realistic superfast & express schedules
-    if not matched_trains:
-        from_st = get_station_by_code(fc)
-        to_st = get_station_by_code(tc)
-        
-        # Calculate dynamic estimated duration based on distance/codes
-        hash_seed = int(hashlib.md5(f"{fc}:{tc}".encode()).hexdigest(), 16)
-        dur_hours = 4 + (hash_seed % 14)
-        dur_mins = (hash_seed % 4) * 15
-        dur_str = f"{dur_hours}h {dur_mins:02d}m"
 
-        schedules = [
-            ("22" + str(100 + hash_seed % 800), f"{from_st['city']} - {to_st['city']} Vande Bharat Express", "Vande Bharat", "06:00", [("CC", 1450.0), ("EC", 2800.0)]),
-            ("12" + str(200 + (hash_seed + 1) % 700), f"{from_st['city']} - {to_st['city']} Superfast Express", "Superfast", "16:30", [("SL", 540.0), ("3A", 1480.0), ("2A", 2150.0), ("1A", 3650.0)]),
-            ("12" + str(500 + (hash_seed + 2) % 400), f"{from_st['city']} - {to_st['city']} Garib Rath / Express", "Express", "20:45", [("SL", 480.0), ("3A", 1250.0), ("2A", 1850.0)]),
-        ]
+async def search_trains_between_stations(
+    from_code: str, to_code: str, journey_date: date
+) -> list[dict[str, Any]]:
+    """Search trains between two stations on a given journey date."""
+    fc = from_code.strip().upper()
+    tc = to_code.strip().upper()
 
-        for train_num, name, ttype, dep_time, class_list in schedules:
-            dep_dt = datetime.strptime(dep_time, "%H:%M")
-            arr_dt = dep_dt + timedelta(hours=dur_hours, minutes=dur_mins)
-            arr_time = arr_dt.strftime("%H:%M")
+    external_results = await fetch_trains_from_external_api(fc, tc, journey_date)
+    if external_results:
+        return external_results
 
-            classes = []
-            for cls, fare in class_list:
-                status, stype = calculate_availability_status(f"{train_num}:{journey_date}", cls)
-                classes.append({
-                    "travel_class": cls,
-                    "class_name": CLASS_NAMES.get(cls, cls),
-                    "fare": fare,
-                    "status": status,
-                    "status_type": stype,
-                })
-
-            matched_trains.append({
-                "train_number": train_num,
-                "train_name": name,
-                "train_type": ttype,
-                "from_station_code": fc,
-                "from_station_name": from_st["name"],
-                "to_station_code": tc,
-                "to_station_name": to_st["name"],
-                "departure_time": dep_time,
-                "arrival_time": arr_time,
-                "duration": dur_str,
-                "running_days": ["Daily"],
-                "classes": classes,
-                "has_pantry": True,
-            })
-
-    return matched_trains
+    return _catalog_trains_for_route(fc, tc)
 
 
 def generate_pnr() -> str:
@@ -635,82 +745,154 @@ def generate_berth_allocation(travel_class: str, index: int, pref: str) -> str:
 
 
 def lookup_pnr_status(db: Session, pnr: str) -> Optional[dict[str, Any]]:
-    """Lookup PNR in database or construct live PNR status response."""
+    """Lookup a PNR in the local booking database only."""
     clean_pnr = pnr.strip().replace("-", "").replace(" ", "")
-    
-    # Check if local booking exists
+
+    # Only genuine 10-digit IRCTC PNR numbers are accepted
+    if not re.match(r"^\d{10}$", clean_pnr):
+        return None
+
     booking = db.query(models.TrainBooking).filter(models.TrainBooking.pnr_number == clean_pnr).first()
-    if booking:
-        return {
-            "pnr_number": booking.pnr_number,
-            "train_number": booking.train_number,
-            "train_name": booking.train_name,
-            "from_station": f"{booking.from_station_name} ({booking.from_station_code})",
-            "to_station": f"{booking.to_station_name} ({booking.to_station_code})",
-            "journey_date": str(booking.journey_date),
-            "travel_class": booking.travel_class,
-            "chart_prepared": True,
-            "status": booking.status,
-            "passengers": booking.passengers or [],
-        }
+    if not booking:
+        return None
 
-    # If valid 10-digit number not in DB, generate realistic status
-    if re.match(r"^\d{10}$", clean_pnr):
-        h = int(hashlib.md5(clean_pnr.encode()).hexdigest(), 16)
-        train_idx = h % len(POPULAR_TRAINS)
-        t = POPULAR_TRAINS[train_idx]
-        return {
-            "pnr_number": clean_pnr,
-            "train_number": t["train_number"],
-            "train_name": t["train_name"],
-            "from_station": f"{t['from_name']} ({t['from_code']})",
-            "to_station": f"{t['to_name']} ({t['to_code']})",
-            "journey_date": (date.today() + timedelta(days=2)).strftime("%Y-%m-%d"),
-            "travel_class": "3A",
-            "chart_prepared": True,
-            "status": "CONFIRMED",
-            "passengers": [
-                {"name": "Passenger 1", "age": 32, "gender": "M", "seat_number": "B2-14 (Lower)", "status": "CNF"},
-                {"name": "Passenger 2", "age": 29, "gender": "F", "seat_number": "B2-15 (Middle)", "status": "CNF"},
-            ],
-        }
-
-    return None
+    return {
+        "pnr_number": booking.pnr_number,
+        "train_number": booking.train_number,
+        "train_name": booking.train_name,
+        "from_station": f"{booking.from_station_name} ({booking.from_station_code})",
+        "to_station": f"{booking.to_station_name} ({booking.to_station_code})",
+        "journey_date": str(booking.journey_date),
+        "travel_class": booking.travel_class,
+        "chart_prepared": True,
+        "status": booking.status,
+        "passengers": booking.passengers or [],
+    }
 
 
-def get_live_train_status(train_number: str) -> dict[str, Any]:
-    """Retrieve live running status and position of a train."""
-    num = train_number.strip()
-    found_train = None
-    for t in POPULAR_TRAINS:
-        if t["train_number"] == num:
-            found_train = t
-            break
-            
-    name = found_train["train_name"] if found_train else f"Superfast Express ({num})"
-    h = int(hashlib.md5(num.encode()).hexdigest(), 16)
-    delays = [0, 5, 12, 25, 0, 8, 15]
-    delay = delays[h % len(delays)]
-    
-    if delay == 0:
-        msg = "Running On Time (Right Time)"
-    else:
-        msg = f"Running Delayed by {delay} mins"
+async def fetch_pnr_status_from_external(pnr: str) -> Optional[dict[str, Any]]:
+    """Query external Indian Railways API for original PNR status if an API key is available."""
+    if not api_configured():
+        return None
+    payload = await _get_rapidapi("api/v3/getPNRStatus", {"pnrNumber": pnr})
+    data = _find(payload, "data", "result", "pnr")
+    if not isinstance(data, dict):
+        return None
 
-    stations = ["Kanpur Central", "Jhansi Junction", "Nagpur Junction", "Bhopal Junction", "Vijayawada Junction", "Surat", "Ratlam"]
-    curr_st = stations[h % len(stations)]
-    next_st = stations[(h + 1) % len(stations)]
+    train_number = _first(data, "train_number", "train_num", "trainNo")
+    if not train_number:
+        return None
 
-    now = datetime.now()
-    est_arr = (now + timedelta(minutes=45)).strftime("%H:%M")
+    def _station_label(key_name: str) -> str:
+        raw = _find(data, key_name)
+        if isinstance(raw, dict):
+            return f"{_first(raw, 'name', 'station_name')} ({_first(raw, 'code', 'station_code')})"
+        return _first(data, key_name, f"{key_name}_name")
+
+    raw_passengers = _find(data, "passengers", "passenger_list", "passengerList")
+    passengers = []
+    if isinstance(raw_passengers, list):
+        for i, p in enumerate(raw_passengers, start=1):
+            if not isinstance(p, dict):
+                continue
+            coach = _first(p, "coach", "coach_position")
+            seat = _first(p, "seat", "seat_number", "berth")
+            berth_desc = _first(p, "booking_berth_desc", "booking_berth_code")
+            seat_str = "/".join(part for part in (coach, seat) if part)
+            if berth_desc and berth_desc.upper() not in ("NA", "N/A"):
+                seat_str = f"{seat_str} ({berth_desc})" if seat_str else berth_desc
+            passengers.append({
+                "name": _first(p, "name") or f"Passenger {i}",
+                "age": _to_int(_find(p, "age"), 0),
+                "gender": _first(p, "gender") or "N/A",
+                "seat_number": seat_str or "TBD",
+                "status": _first(p, "current_status", "current_status_code", "booking_status", "status") or "CNF",
+            })
+
+    chart_raw = _find(data, "chart_prepared", "chartPrepared", "is_chart_prepared")
+    chart_prepared = bool(chart_raw) if chart_raw is not None else bool(passengers)
+
+    status_line = _first(data, "status", "pnr_status") or (
+        passengers[0]["status"] if passengers else ("CONFIRMED" if chart_prepared else "UNCONFIRMED")
+    )
+
+    return {
+        "pnr_number": _first(data, "pnr_number", "pnrNumber") or pnr,
+        "train_number": train_number,
+        "train_name": _first(data, "train_name", "trainName") or f"Train {train_number}",
+        "from_station": _station_label("from_station"),
+        "to_station": _station_label("to_station"),
+        "journey_date": _first(data, "journey_date", "journeyDate", "reservation_date") or "",
+        "travel_class": _first(data, "class", "travel_class", "classType") or "",
+        "chart_prepared": chart_prepared,
+        "status": status_line,
+        "passengers": passengers,
+    }
+
+
+async def get_live_train_status(train_number: str) -> Optional[dict[str, Any]]:
+    """Retrieve original live running status from the external API."""
+    if not api_configured():
+        return None
+    payload = await _get_rapidapi(
+        "api/v1/liveTrainStatus", {"trainNo": train_number.strip(), "startDay": "0"}
+    )
+    data = _find(payload, "data")
+    if not isinstance(data, dict) or not data:
+        return None
+
+    num = _first(data, "train_num", "train_number", "trainNo") or train_number.strip()
+    name = _first(data, "train_name", "trainName") or f"Train {num}"
+    current_station = _first(data, "current_station_name", "current_station", "current_station_code", "position")
+    if not current_station:
+        return None
+
+    delay_val = _find(data, "delay_in_minutes", "delay_minutes", "delay")
+    if isinstance(delay_val, dict):
+        delay_val = _to_int(_find(delay_val, "actual_delay", "scheduled_delay"), 0)
+    delay = _to_int(delay_val, 0)
+
+    next_station = _first(data, "upcoming_station_name", "next_station", "upcoming_station") or "No upcoming station"
+    estimated_arrival = _first(data, "upcoming_station_arrival_time", "next_station_arrival", "eta")
+    if not estimated_arrival:
+        estimated_arrival = (datetime.now() + timedelta(minutes=45)).strftime("%H:%M")
 
     return {
         "train_number": num,
         "train_name": name,
-        "current_station": curr_st,
-        "status_message": msg,
+        "current_station": current_station,
+        "status_message": "Running On Time (Right Time)" if delay == 0 else f"Running Delayed by {delay} mins",
         "delay_minutes": delay,
-        "last_updated": "Just now",
-        "next_station": next_st,
-        "estimated_arrival": est_arr,
+        "last_updated": _first(data, "last_update", "last_updated", "lastUpdated", "updated_at") or "Just now",
+        "next_station": next_station,
+        "estimated_arrival": estimated_arrival,
     }
+
+
+async def search_stations_external(query: str) -> Optional[list[dict[str, str]]]:
+    """Query external Indian Railways API for original station results if an API key is available."""
+    if not api_configured():
+        return None
+    payload = await _get_rapidapi("api/v1/searchStation", {"query": query.strip()})
+    data = _find(payload, "data")
+    if not isinstance(data, list):
+        return None
+    results = []
+    seen = set()
+    for s in data:
+        if not isinstance(s, dict):
+            continue
+        code = _first(s, "station_code", "code").upper()
+        if not code or code in seen:
+            continue
+        seen.add(code)
+        name = _first(s, "station_name", "name") or _first(s, "city")
+        results.append({
+            "code": code,
+            "name": name or f"Station ({code})",
+            "city": _first(s, "city") or name or code,
+            "state": _first(s, "state") or "India",
+        })
+        if len(results) >= 15:
+            break
+    return results or None

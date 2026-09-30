@@ -47,8 +47,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    await logoutUser();
-    setUser(null);
+    // Sign the user out locally even if the backend call fails — an error on
+    // logout must never leave someone thinking they are still signed in, and a
+    // stale server session will simply be cleared on their next request.
+    try {
+      await logoutUser();
+    } finally {
+      setUser(null);
+    }
   }, []);
 
   return (

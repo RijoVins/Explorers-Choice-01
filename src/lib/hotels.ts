@@ -1,8 +1,18 @@
-import type { Hotel } from "@/data/hotels";
-import { hotels as demoHotels } from "@/data/hotels";
-import { getApiBaseUrl } from "@/lib/api";
+import { apiGet, type ApiResult } from "@/lib/apiClient";
 
-type ApiHotel = {
+/**
+ * Hotels read model.
+ *
+ * `getMergedHotels` previously unioned every API hotel with eight hardcoded
+ * sample properties, so an empty database still published fabricated nightly
+ * rates and star ratings. The API is now the only source of truth.
+ *
+ * Note: the `hotels` table has no rating column, so `rating` is intentionally
+ * absent here rather than faked as 0. The UI hides rating UI when it is not
+ * present instead of showing invented stars.
+ */
+
+export type ApiHotel = {
   id: number;
   slug: string;
   name: string;
@@ -11,51 +21,50 @@ type ApiHotel = {
   tagline: string;
   description: string;
   image: string;
-  price_per_night: number;
+  pricePerNight: number;
   currency: string;
   amenities: string[];
   highlights: string[];
-  created_at: string;
-  updated_at: string;
 };
 
-const FALLBACK_IMAGE =
-  "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1600&q=80";
+const str = (value: unknown, fallback = ""): string =>
+  value === null || value === undefined ? fallback : String(value);
 
-function toHotel(api: ApiHotel): Hotel {
+const strArray = (value: unknown): string[] =>
+  Array.isArray(value) ? value.map((item) => String(item)) : [];
+
+export function toHotel(api: Record<string, unknown>): ApiHotel {
+  const price = Number(api.price_per_night);
   return {
-    slug: api.slug,
-    name: api.name,
-    location: api.location,
-    destination: api.destination,
-    tagline: api.tagline,
-    description: api.description,
-    image: api.image || FALLBACK_IMAGE,
-    rating: 0,
-    pricePerNight: api.price_per_night,
-    currency: api.currency || "INR", // BUG-14: preserve API currency
-    amenities: api.amenities ?? [],
-    highlights: api.highlights ?? [],
+    id: Number(api.id) || 0,
+    slug: str(api.slug),
+    name: str(api.name),
+    location: str(api.location),
+    destination: str(api.destination),
+    tagline: str(api.tagline),
+    description: str(api.description),
+    image: str(api.image),
+    pricePerNight: Number.isFinite(price) ? price : 0,
+    currency: str(api.currency, "USD"),
+    amenities: strArray(api.amenities),
+    highlights: strArray(api.highlights),
   };
 }
 
-export async function getHotelsFromApi(): Promise<Hotel[]> {
-  try {
-    const response = await fetch(`${getApiBaseUrl()}/api/hotels`, {
-      next: { revalidate: 60 },
-      signal: AbortSignal.timeout(1500),
-    });
-    if (!response.ok) return [];
-    const data = (await response.json()) as ApiHotel[];
-    return data.map(toHotel);
-  } catch {
-    return [];
-  }
+export async function getHotels(): Promise<ApiResult<ApiHotel[]>> {
+  const result = await apiGet<Record<string, unknown>[]>("/hotels");
+  if (!result.ok) return result;
+  return { ok: true, data: result.data.map(toHotel) };
 }
 
-export async function getMergedHotels(): Promise<Hotel[]> {
-  const apiHotels = await getHotelsFromApi();
-  const apiSlugs = new Set(apiHotels.map((h) => h.slug));
-  const uniqueDemo = demoHotels.filter((h) => !apiSlugs.has(h.slug));
-  return [...apiHotels, ...uniqueDemo];
+export async function getHotelBySlug(
+  slug: string,
+): Promise<ApiResult<ApiHotel | null>> {
+  const result = await apiGet<Record<string, unknown>>(
+    `/hotels/${encodeURIComponent(slug)}`,
+  );
+  if (!result.ok) {
+    return result.status === 404 ? { ok: true, data: null } : result;
+  }
+  return { ok: true, data: toHotel(result.data) };
 }

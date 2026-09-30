@@ -1,6 +1,6 @@
-import Image from "next/image";
 import Link from "next/link";
-import type { Destination } from "@/data/destinations";
+import type { Destination } from "@/lib/catalog";
+import { SafeImage } from "@/components/cards/SafeImage";
 
 export function DestinationCard({ destination }: { destination: Destination }) {
   return (
@@ -9,17 +9,17 @@ export function DestinationCard({ destination }: { destination: Destination }) {
       className="group block overflow-hidden rounded-2xl border border-line bg-cream shadow-card transition-transform duration-200 hover:-translate-y-1"
     >
       <div className="relative aspect-[4/3] overflow-hidden bg-sand">
-        <Image
+        <SafeImage
           src={destination.image}
           alt={destination.name}
-          fill
           sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-          className="object-cover transition-transform duration-500 group-hover:scale-105"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-forest-dark/40 to-transparent" />
-        <span className="absolute left-4 top-4 rounded-full bg-ivory/90 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-forest">
-          {destination.region}
-        </span>
+        {destination.region ? (
+          <span className="absolute left-4 top-4 rounded-full bg-ivory/90 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-forest">
+            {destination.region}
+          </span>
+        ) : null}
       </div>
       <div className="p-6">
         <h3 className="font-display text-2xl text-forest">{destination.name}</h3>

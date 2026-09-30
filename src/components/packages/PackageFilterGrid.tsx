@@ -2,28 +2,39 @@
 
 import { useState, useMemo } from "react";
 import { PackageCard } from "@/components/cards/PackageCard";
-import type { CatalogPackageDetail } from "@/lib/catalog";
+import type { CatalogPackage } from "@/lib/catalog";
+
+type DestinationOption = { slug: string; name: string };
 
 type PackageFilterGridProps = {
-  initialPackages: CatalogPackageDetail[];
+  initialPackages: CatalogPackage[];
 };
 
 export function PackageFilterGrid({ initialPackages }: PackageFilterGridProps) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedDestination, setSelectedDestination] = useState("");
+  const [selectedDestination, setSelectedDestination] = useState<DestinationOption>({
+    slug: "",
+    name: "",
+  });
   const [sortBy, setSortBy] = useState("recommended");
 
-  // Get unique destinations for the filter dropdown
+  // Only destinations that actually carry a package make the dropdown. A
+  // destination with zero published journeys is not a useful filter value.
   const destinations = useMemo(() => {
-    const dests = new Set(initialPackages.map((p) => p.destination).filter(Boolean));
-    return Array.from(dests).sort();
+    const map = new Map<string, string>();
+    for (const pkg of initialPackages) {
+      if (pkg.destinationSlug && pkg.destination) {
+        map.set(pkg.destinationSlug, pkg.destination);
+      }
+    }
+    return Array.from(map, ([slug, name]) => ({ slug, name })).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
   }, [initialPackages]);
 
-  // Filter and sort logic
   const filteredAndSortedPackages = useMemo(() => {
     let result = [...initialPackages];
 
-    // Filter by search query (checks name, country, and destination)
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       result = result.filter(
@@ -31,28 +42,34 @@ export function PackageFilterGrid({ initialPackages }: PackageFilterGridProps) {
           p.name.toLowerCase().includes(q) ||
           p.country.toLowerCase().includes(q) ||
           p.destination.toLowerCase().includes(q) ||
-          p.highlights.some((h) => h.toLowerCase().includes(q))
+          p.highlights.some((h) => h.toLowerCase().includes(q)),
       );
     }
 
-    // Filter by destination
-    if (selectedDestination) {
-      result = result.filter((p) => p.destination === selectedDestination);
+    if (selectedDestination.slug) {
+      result = result.filter((p) => p.destinationSlug === selectedDestination.slug);
     }
 
-    // Sort
-    if (sortBy === "price_asc") {
+    if (sortBy === "recommended") {
+      // "Recommended" means admin-featured, not an invented popularity score.
+      result.sort((a, b) => Number(b.isFeatured) - Number(a.isFeatured));
+    } else if (sortBy === "price_asc") {
       result.sort((a, b) => a.startingPrice - b.startingPrice);
     } else if (sortBy === "price_desc") {
       result.sort((a, b) => b.startingPrice - a.startingPrice);
     } else if (sortBy === "duration_asc") {
-      result.sort((a, b) => parseInt(a.duration) - parseInt(b.duration));
+      result.sort((a, b) => a.durationDays - b.durationDays);
     } else if (sortBy === "duration_desc") {
-      result.sort((a, b) => parseInt(b.duration) - parseInt(a.duration));
+      result.sort((a, b) => b.durationDays - a.durationDays);
     }
 
     return result;
   }, [initialPackages, searchQuery, selectedDestination, sortBy]);
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setSelectedDestination({ slug: "", name: "" });
+  };
 
   return (
     <div>
@@ -67,17 +84,22 @@ export function PackageFilterGrid({ initialPackages }: PackageFilterGridProps) {
             className="w-full rounded-xl border border-line bg-white px-4 py-2.5 text-sm text-charcoal focus:border-terracotta focus:outline-none"
           />
         </div>
-        
+
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
           <select
-            value={selectedDestination}
-            onChange={(e) => setSelectedDestination(e.target.value)}
+            value={selectedDestination.slug}
+            onChange={(e) => {
+              const next =
+                destinations.find((d) => d.slug === e.target.value) ??
+                { slug: "", name: "" };
+              setSelectedDestination(next);
+            }}
             className="rounded-xl border border-line bg-white px-4 py-2.5 text-sm text-charcoal focus:border-terracotta focus:outline-none"
           >
             <option value="">All Destinations</option>
             {destinations.map((dest) => (
-              <option key={dest} value={dest}>
-                {dest}
+              <option key={dest.slug} value={dest.slug}>
+                {dest.name}
               </option>
             ))}
           </select>
@@ -100,15 +122,17 @@ export function PackageFilterGrid({ initialPackages }: PackageFilterGridProps) {
       {filteredAndSortedPackages.length > 0 ? (
         <div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
           {filteredAndSortedPackages.map((pkg) => (
-            <PackageCard key={pkg.slug} pkg={pkg} />
+            <PackageCard key={pkg.id} pkg={pkg} />
           ))}
         </div>
       ) : (
         <div className="rounded-2xl border border-dashed border-line py-16 text-center">
           <h3 className="font-display text-2xl text-forest">No journeys found</h3>
-          <p className="mt-2 text-charcoal-soft">Try adjusting your search or clear your filters.</p>
-          <button 
-            onClick={() => { setSearchQuery(""); setSelectedDestination(""); }}
+          <p className="mt-2 text-charcoal-soft">
+            Try adjusting your search or clear your filters.
+          </p>
+          <button
+            onClick={clearFilters}
             className="mt-6 font-semibold text-terracotta hover:underline"
           >
             Clear filters

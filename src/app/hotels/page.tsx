@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { Container } from "@/components/ui/Container";
 import { HotelCard } from "@/components/cards/HotelCard";
-import { getMergedHotels } from "@/lib/hotels";
+import { getHotels } from "@/lib/hotels";
+import { EmptyState, ErrorState } from "@/components/ui/States";
 
 export const metadata: Metadata = {
   title: "Hotels",
@@ -10,7 +11,7 @@ export const metadata: Metadata = {
 };
 
 export default async function HotelsPage() {
-  const mergedHotels = await getMergedHotels();
+  const result = await getHotels();
 
   return (
     <>
@@ -31,12 +32,17 @@ export default async function HotelsPage() {
 
       <section className="py-16 sm:py-20">
         <Container>
-          {mergedHotels.length === 0 ? (
-            <p className="text-charcoal-soft">No hotels available yet.</p>
+          {!result.ok ? (
+            <ErrorState message={result.error} />
+          ) : result.data.length === 0 ? (
+            <EmptyState
+              title="No stays published yet"
+              message="We haven't published any hotels yet. Once our team adds one it will appear here straight away."
+            />
           ) : (
             <div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
-              {mergedHotels.map((hotel) => (
-                <HotelCard key={hotel.slug} hotel={hotel} />
+              {result.data.map((hotel) => (
+                <HotelCard key={hotel.id} hotel={hotel} />
               ))}
             </div>
           )}

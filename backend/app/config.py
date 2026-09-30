@@ -17,9 +17,44 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # PostgreSQL is the deployment database. Set DATABASE_URL in backend/.env
-    # for local development or in the hosting provider's environment settings.
+    # ── Database provider selection ───────────────────────────────────────────
+    # "mysql"    → the MySQL-compatible database (MySQL 8 / MariaDB / TiDB).
+    # "supabase" → the Supabase-hosted PostgreSQL database.
+    #
+    # There is no automatic fallback: the selected provider is the only one
+    # the application will ever query.
+    database_provider: str = Field(
+        default="supabase",
+        validation_alias=AliasChoices("DATABASE_PROVIDER", "DB_PROVIDER"),
+    )
+
+    # PostgreSQL connection string, used when DATABASE_PROVIDER=supabase.
+    # Retained so Supabase can be reactivated without any code change.
     database_url: str = ""
+
+    # MySQL connection details, used when DATABASE_PROVIDER=mysql. Kept as
+    # discrete variables so a password containing @ : / ? # & cannot corrupt
+    # the connection URL. Set MYSQL_URL instead if you prefer a single URL.
+    mysql_host: str = ""
+    mysql_port: int = 3306
+    mysql_database: str = ""
+    mysql_user: str = ""
+    mysql_password: str = ""
+    mysql_url: str = ""
+    # "verify-ca" verifies the server certificate against MYSQL_SSL_CA.
+    # "verify-full" additionally checks the certificate hostname. This is the
+    # default so hostname verification is never silently omitted.
+    # Unverified TLS is rejected at startup by design.
+    mysql_ssl_mode: str = "verify-full"
+    mysql_ssl_ca: str = ""
+
+    # Connection pool sizing. Defaults suit TiDB Cloud / MySQL 8; lower
+    # MYSQL_POOL_SIZE if your host limits concurrent connections.
+    db_pool_size: int = 10
+    db_max_overflow: int = 20
+    mysql_pool_size: int | None = None
+    mysql_max_overflow: int | None = None
+    mysql_pool_recycle: int | None = None
 
     # Shared secret used by the admin UI to authenticate admin operations
     # (`X-ADMIN-KEY` header). Keep in sync with the admin area deployment.
@@ -132,12 +167,53 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("RAILWAY_API_URL", "TRAIN_API_BASE_URL"),
     )
 
+    @property
+    def active_provider(self) -> str:
+        return (self.database_provider or "").strip().lower()
+
+    @property
+    def is_mysql(self) -> bool:
+        return self.active_provider == "mysql"
+
+    @property
+    def is_supabase(self) -> bool:
+        return self.active_provider == "supabase"
+
     @model_validator(mode="after")
     def _guard_placeholder_secrets(self) -> "Settings":
-        if not self.database_url.strip():
-            raise ValueError("DATABASE_URL must point to the shared application database.")
-        if self.database_url.startswith("sqlite"):
-            raise ValueError("SQLite is no longer supported. Please use the shared PostgreSQL database URL.")
+        provider = self.active_provider
+        if provider not in ("mysql", "supabase"):
+            raise ValueError(
+                f"DATABASE_PROVIDER={provider!r} is not supported. "
+                "Use 'mysql' or 'supabase'."
+            )
+
+        if provider == "mysql":
+            # Only the active provider's settings are required. The Supabase
+            # DATABASE_URL stays untouched and unvalidated so Supabase can be
+            # reactivated later without first repairing its credentials.
+            if not self.mysql_url.strip():
+                for field in ("mysql_host", "mysql_database", "mysql_user", "mysql_password"):
+                    if not getattr(self, field).strip():
+                        raise ValueError(
+                            f"DATABASE_PROVIDER=mysql requires {field.upper()} "
+                            "in backend/.env (or MYSQL_URL instead of those four)."
+                        )
+            mode = (self.mysql_ssl_mode or "").strip().lower()
+            if mode not in ("verify-ca", "verify-full"):
+                raise ValueError(
+                    f"MYSQL_SSL_MODE={mode!r} is not permitted. Use 'verify-ca' or "
+                    "'verify-full' so the server certificate is always verified."
+                )
+        else:
+            if not self.database_url.strip():
+                raise ValueError(
+                    "DATABASE_PROVIDER=supabase requires DATABASE_URL to point at the "
+                    "shared application database."
+                )
+            if self.database_url.startswith("sqlite"):
+                raise ValueError("SQLite is no longer supported. Please use PostgreSQL or MySQL.")
+
         if (
             not self.secret_key
             or self.secret_key == "change-me-customer-secret"

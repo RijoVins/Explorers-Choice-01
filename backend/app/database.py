@@ -1,32 +1,31 @@
-from sqlalchemy import create_engine
-from sqlalchemy.engine import Engine
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+"""Backwards-compatible re-exports of the shared database access layer.
 
-from .config import settings
+The implementation moved to :mod:`app.db` so that MySQL and Supabase can have
+separate, self-contained providers. Existing imports such as
+``from .database import Base, get_db`` keep working unchanged.
+"""
+from __future__ import annotations
 
+from .db import (  # noqa: F401
+    Base,
+    DatabaseProvider,
+    SessionLocal,
+    dispose,
+    engine,
 
-engine_options = {
-    "pool_size": 10,
-    "max_overflow": 20,
-    "pool_timeout": 30,
-    "pool_recycle": 1800,
-}
-engine = create_engine(
-    settings.database_url, pool_pre_ping=True, future=True, **engine_options
+    get_db,
+    get_provider,
+    provider,
 )
 
 
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
-
-
-class Base(DeclarativeBase):
-    """Declarative base for all ORM models."""
-
-
-def get_db():
-    """FastAPI dependency that yields a database session."""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+__all__ = [
+    "Base",
+    "DatabaseProvider",
+    "SessionLocal",
+    "dispose",
+    "engine",
+    "get_db",
+    "get_provider",
+    "provider",
+]

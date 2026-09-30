@@ -10,11 +10,13 @@ from .. import models, schemas, security
 from ..database import get_db
 from ..email_service import send_train_booking_notification_email
 from ..train_api import (
+    fetch_pnr_status_from_external,
     generate_berth_allocation,
     generate_pnr,
     get_live_train_status,
     lookup_pnr_status,
     search_stations,
+    search_stations_external,
     search_trains_between_stations,
 )
 
@@ -25,8 +27,12 @@ router = APIRouter()
 # Station Search
 # ---------------------------------------------------------------------------
 @router.get("/stations", response_model=list[schemas.StationInfo])
-def get_stations(q: str = Query(default="", max_length=50)):
+async def get_stations(q: str = Query(default="", max_length=50)):
     """Search railway stations by code, city, or station name."""
+    if q.strip():
+        external = await search_stations_external(q.strip())
+        if external is not None:
+            return external
     return search_stations(q)
 
 
@@ -53,13 +59,16 @@ async def search_trains(
 # PNR Status Lookup
 # ---------------------------------------------------------------------------
 @router.get("/pnr/{pnr}", response_model=schemas.PnrStatusRead)
-def get_pnr_status(
+async def get_pnr_status(
     pnr: str,
     db: Session = Depends(get_db),
     _rl: None = Depends(security.rate_limit("pnr-lookup", limit=30, window_seconds=60)),
 ):
     """Check live PNR status, coach/berth confirmation, and charting details."""
-    res = lookup_pnr_status(db, pnr)
+    clean_pnr = pnr.replace("-", "").replace(" ", "").strip()
+    res = lookup_pnr_status(db, clean_pnr)
+    if not res:
+        res = await fetch_pnr_status_from_external(clean_pnr)
     if not res:
         raise HTTPException(status_code=404, detail="PNR not found or invalid format.")
     return res
@@ -69,12 +78,15 @@ def get_pnr_status(
 # Live Train Running Status
 # ---------------------------------------------------------------------------
 @router.get("/live/{train_number}", response_model=schemas.LiveTrainStatusRead)
-def get_train_live(
+async def get_train_live(
     train_number: str,
     _rl: None = Depends(security.rate_limit("live-train", limit=30, window_seconds=60)),
 ):
     """Check live running position and delay status of a train."""
-    return get_live_train_status(train_number)
+    res = await get_live_train_status(train_number)
+    if not res:
+        raise HTTPException(status_code=404, detail="Live status unavailable for this train.")
+    return res
 
 
 # ---------------------------------------------------------------------------

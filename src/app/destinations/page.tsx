@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { Container } from "@/components/ui/Container";
 import { DestinationCard } from "@/components/cards/DestinationCard";
-import { getDestinationsFromApi } from "@/lib/catalog";
+import { EmptyState, ErrorState } from "@/components/ui/States";
+import { getDestinations } from "@/lib/catalog";
 
-// BUG-08: revalidate so admin catalog edits publish to the public site.
 export const revalidate = 60;
 
 export const metadata: Metadata = {
@@ -13,8 +13,7 @@ export const metadata: Metadata = {
 };
 
 export default async function DestinationsPage() {
-  // BUG-08: prefer the live API catalog; fall back to static data when offline.
-  const destinations = await getDestinationsFromApi();
+  const result = await getDestinations();
 
   return (
     <>
@@ -35,11 +34,20 @@ export default async function DestinationsPage() {
 
       <section className="py-16 sm:py-20">
         <Container>
-          <div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
-            {destinations.map((destination) => (
-              <DestinationCard key={destination.slug} destination={destination} />
-            ))}
-          </div>
+          {!result.ok ? (
+            <ErrorState message={result.error} />
+          ) : result.data.length === 0 ? (
+            <EmptyState
+              title="No destinations published yet"
+              message="We haven't published any destinations yet. Once our team adds one it will appear here straight away."
+            />
+          ) : (
+            <div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
+              {result.data.map((destination) => (
+                <DestinationCard key={destination.id} destination={destination} />
+              ))}
+            </div>
+          )}
         </Container>
       </section>
     </>

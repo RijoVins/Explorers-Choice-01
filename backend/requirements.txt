@@ -3,6 +3,7 @@ uvicorn[standard]==0.34.0
 sqlalchemy==2.0.52
 alembic==1.14.0
 psycopg[binary]==3.2.13
+PyMySQL[rsa]==1.1.1
 pydantic-settings==2.7.1
 python-slugify==8.0.4
 bcrypt==5.0.0

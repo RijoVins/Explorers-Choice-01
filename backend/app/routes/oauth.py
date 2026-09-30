@@ -83,6 +83,29 @@ def _normalize_next(raw: str | None) -> str:
     return "/account"
 
 
+# Role-appropriate landing pages. A customer must never be dropped onto /admin
+# after signing in, or login would loop forever.
+_STAFF_PREFIXES = ("/admin",)
+_OWNER_PREFIXES = ("/hotel-owner",)
+_CUSTOMER_PREFIXES = ("/account",)
+
+
+def _safe_post_login_path(raw: str, user) -> str:
+    """Return ``raw`` when it is appropriate for this user's role, else the
+    default landing page for the role."""
+    if not _is_safe_next(raw):
+        raw = "/account"
+    if user.is_staff:
+        return raw if raw.startswith(_STAFF_PREFIXES) else "/admin"
+    if user.role == "HOTEL_OWNER":
+        return raw if raw.startswith(_OWNER_PREFIXES) else "/hotel-owner"
+    # Regular customers may only land on their own area (or anywhere a logged-in
+    # visitor is fine, but never /admin or /hotel-owner).
+    if raw.startswith(_STAFF_PREFIXES) or raw.startswith(_OWNER_PREFIXES):
+        return "/account"
+    return raw
+
+
 # ---------------------------------------------------------------------------
 # GET /api/auth/google — redirect the browser to Google's consent screen
 # ---------------------------------------------------------------------------
@@ -229,7 +252,7 @@ def google_login_callback(
     # Create session cookie and redirect to frontend
     token = security.create_access_token(user.id, user.token_version or 0)
 
-    redirect_url = f"{base_return}{next_path}"
+    redirect_url = f"{base_return}{_safe_post_login_path(next_path, user)}"
     response = RedirectResponse(
         url=redirect_url,
         status_code=status.HTTP_302_FOUND,

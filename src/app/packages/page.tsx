@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { Container } from "@/components/ui/Container";
 import { BookNowCta } from "@/components/cta/BookNowCta";
-import { getPackagesFromApi } from "@/lib/catalog";
+import { getPackages } from "@/lib/catalog";
+import { EmptyState, ErrorState } from "@/components/ui/States";
 import { PackageFilterGrid } from "@/components/packages/PackageFilterGrid";
 
-// BUG-08: revalidate so admin catalog edits publish to the public site.
 export const revalidate = 60;
 
 export const metadata: Metadata = {
@@ -14,8 +14,7 @@ export const metadata: Metadata = {
 };
 
 export default async function PackagesPage() {
-  // BUG-08: prefer the live API catalog; fall back to static data when offline.
-  const packages = await getPackagesFromApi();
+  const result = await getPackages();
 
   return (
     <>
@@ -36,7 +35,16 @@ export default async function PackagesPage() {
 
       <section className="py-16 sm:py-20">
         <Container>
-          <PackageFilterGrid initialPackages={packages} />
+          {!result.ok ? (
+            <ErrorState message={result.error} />
+          ) : result.data.length === 0 ? (
+            <EmptyState
+              title="No journeys published yet"
+              message="We haven't published any packages yet. Once our team adds one it will appear here straight away."
+            />
+          ) : (
+            <PackageFilterGrid initialPackages={result.data} />
+          )}
         </Container>
       </section>
 
