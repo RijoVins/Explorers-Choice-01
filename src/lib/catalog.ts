@@ -176,10 +176,6 @@ export function toPackage(
     faqs: detail ? faqs : [],
   };
 }
-    itineraryDays: detail ? itinerary : [],
-    faqs: detail ? faqs : [],
-  };
-}
 
 // ---------------------------------------------------------------------------
 // Destinations

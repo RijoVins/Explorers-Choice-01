@@ -112,7 +112,3 @@ export function CustomerStories() {
     </section>
   );
 }
-      </Container>
-    </section>
-  );
-}
