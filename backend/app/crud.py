@@ -25,26 +25,19 @@ def get_user(db: Session, user_id: int | None = None, email: str | None = None) 
 
 
 def create_user(db: Session, data: schemas.UserCreate, password_hash: str) -> models.User:
-    if data.requested_role == "HOTEL_OWNER":
-        user = models.User(
-            email=data.email.strip().lower(),
-            password_hash=password_hash,
-            full_name=data.full_name.strip(),
-            phone=data.phone.strip(),
-            country=data.country.strip(),
-            role="HOTEL_OWNER",
-            requested_role=None,
-        )
-    else:
-        user = models.User(
-            email=data.email.strip().lower(),
-            password_hash=password_hash,
-            full_name=data.full_name.strip(),
-            phone=data.phone.strip(),
-            country=data.country.strip(),
-            requested_role=data.requested_role if data.requested_role != "CUSTOMER" else None,
-        )
+    role_code = "hotel_owner" if data.requested_role == "HOTEL_OWNER" else (
+        data.requested_role.lower() if data.requested_role and data.requested_role != "CUSTOMER" else "customer"
+    )
+    user = models.User(
+        email=data.email.strip().lower(),
+        password_hash=password_hash,
+        display_name=data.full_name.strip(),
+        phone=data.phone.strip() if data.phone else None,
+        status="active",
+    )
     db.add(user)
+    db.flush()
+    db.add(models.UserRole(user_id=user.id, role_code=role_code))
     db.commit()
     db.refresh(user)
     return user
@@ -90,9 +83,11 @@ def link_google_account(
 
 
 def update_user(db: Session, user: models.User, data: schemas.ProfileUpdate) -> models.User:
-    for field, value in data.model_dump(exclude_unset=True).items():
-        if value is not None:
-            setattr(user, field, value)
+    patch = data.model_dump(exclude_unset=True)
+    if "full_name" in patch and patch["full_name"]:
+        user.display_name = patch["full_name"].strip()
+    if "phone" in patch:
+        user.phone = patch["phone"].strip() if patch["phone"] else None
     db.commit()
     db.refresh(user)
     return user

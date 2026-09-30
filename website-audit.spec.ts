@@ -1,32 +1,31 @@
 import { test, expect } from '@playwright/test';
 
-const BASE_URL = 'https://www.explorerschoice.online';
-const API_BASE = 'https://api.explorerschoice.online';
+const BASE_URL = process.env.TEST_URL || 'http://localhost:3000';
+const API_BASE = process.env.API_URL || 'http://localhost:8000';
 
 test.describe('Explorers Choice Website Audit', () => {
   
   test('Homepage loads successfully', async ({ page }) => {
     const response = await page.goto(BASE_URL, { waitUntil: 'networkidle' });
     expect(response?.status()).toBe(200);
-    await expect(page.locator('h1, h2')).toBeVisible();
+    await expect(page.locator('h1, h2').first()).toBeVisible();
   });
 
   test('Navigation menu is functional', async ({ page }) => {
     await page.goto(BASE_URL);
     
     // Check all nav links exist
-    const navLinks = await page.locator('a[href*="/"]').count();
+    const navLinks = await page.locator('header a[href*="/"]').count();
     expect(navLinks).toBeGreaterThan(0);
     
     // Test navigation to key pages
     const links = ['destinations', 'packages', 'about', 'contact'];
     for (const link of links) {
-      const element = page.locator(`a[href*="${link}"]`);
+      const element = page.locator(`header a[href*="${link}"]`).first();
       if (await element.isVisible()) {
         await element.click();
-        await page.waitForLoadState('networkidle');
-        expect(page.url()).toContain(link);
-        await page.goBack();
+        await expect(page).toHaveURL(new RegExp(link));
+        await page.goto(BASE_URL, { waitUntil: 'networkidle' });
       }
     }
   });
@@ -61,48 +60,42 @@ test.describe('Explorers Choice Website Audit', () => {
   });
 
   test('Destinations page loads and displays content', async ({ page }) => {
-    await page.goto(`${BASE_URL}/destinations`);
+    await page.goto(`${BASE_URL}/destinations`, { waitUntil: 'networkidle' });
     
-    const destination = page.locator('[class*="destination"], [class*="card"]');
-    if (await destination.isVisible()) {
-      expect(destination).toBeVisible();
-    }
+    const destination = page.locator('[class*="destination"], [class*="card"], main a[href*="/destinations/"]').first();
+    await expect(destination).toBeVisible();
   });
 
   test('Packages page loads and displays content', async ({ page }) => {
-    await page.goto(`${BASE_URL}/packages`);
+    await page.goto(`${BASE_URL}/packages`, { waitUntil: 'networkidle' });
     
-    const packageCard = page.locator('[class*="package"], [class*="card"]');
-    if (await packageCard.isVisible()) {
-      expect(packageCard).toBeVisible();
-    }
+    const packageCard = page.locator('[class*="package"], [class*="card"], main a[href*="/packages/"]').first();
+    await expect(packageCard).toBeVisible();
   });
 
   test('Contact form is present and functional', async ({ page }) => {
-    await page.goto(`${BASE_URL}/contact`);
+    await page.goto(`${BASE_URL}/contact`, { waitUntil: 'networkidle' });
     
-    const form = page.locator('form, [class*="form"]');
-    if (await form.isVisible()) {
-      expect(form).toBeVisible();
-      
-      // Check for required form elements
-      const inputs = await page.locator('input, textarea').count();
-      expect(inputs).toBeGreaterThan(0);
-    }
+    const form = page.locator('form, [class*="form"]').first();
+    await expect(form).toBeVisible();
+    
+    // Check for required form elements
+    const inputs = await page.locator('input, textarea').count();
+    expect(inputs).toBeGreaterThan(0);
   });
 
   test('Login page is accessible', async ({ page }) => {
-    await page.goto(`${BASE_URL}/login`);
+    await page.goto(`${BASE_URL}/login`, { waitUntil: 'networkidle' });
     
-    const loginForm = page.locator('form, [class*="login"], [class*="auth"]');
-    expect(loginForm).toBeVisible();
+    const loginForm = page.locator('form, [class*="login"], [class*="auth"]').first();
+    await expect(loginForm).toBeVisible();
   });
 
   test('Register page is accessible', async ({ page }) => {
-    await page.goto(`${BASE_URL}/register`);
+    await page.goto(`${BASE_URL}/register`, { waitUntil: 'networkidle' });
     
-    const registerForm = page.locator('form, [class*="register"], [class*="auth"]');
-    expect(registerForm).toBeVisible();
+    const registerForm = page.locator('form, [class*="register"], [class*="auth"]').first();
+    await expect(registerForm).toBeVisible();
   });
 
   test('No console errors on homepage', async ({ page }) => {
@@ -130,11 +123,11 @@ test.describe('Explorers Choice Website Audit', () => {
   test('Mobile responsive layout', async ({ page }) => {
     // Test mobile viewport
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.goto(BASE_URL);
+    await page.goto(BASE_URL, { waitUntil: 'networkidle' });
     
     // Check if content is visible on mobile
-    const mainContent = page.locator('main, [role="main"], body');
-    expect(mainContent).toBeVisible();
+    const mainContent = page.locator('main, [role="main"], body').first();
+    await expect(mainContent).toBeVisible();
   });
 
   test('Images load without errors', async ({ page }) => {

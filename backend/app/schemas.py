@@ -415,13 +415,13 @@ class UserRead(BaseModel):
 
     id: int
     email: str
-    full_name: str
-    phone: str
-    country: str
-    role: str
-    auth_provider: str
-    is_staff: bool
-    created_at: datetime
+    full_name: str = ""
+    phone: str = ""
+    country: str = "India"
+    role: str = "CUSTOMER"
+    auth_provider: str = "EMAIL"
+    is_staff: bool = False
+    created_at: datetime | None = None
 
 
 class LoginRequest(BaseModel):

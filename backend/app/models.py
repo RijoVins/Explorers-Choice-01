@@ -41,44 +41,88 @@ def json_column(default_factory: callable) -> Mapped[list]:
     return mapped_column(JSON, default=default_factory)
 
 
+class UserRole(Base):
+    __tablename__ = "user_roles"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    role_code: Mapped[str] = mapped_column(String(32), primary_key=True)
+    granted_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="user_roles")
+
+
 class User(Base):
+    """Maps to the MySQL `users` table.
+
+    MySQL columns: id, display_name, email, password_hash, phone, email_verified_at, status, created_at, deleted_at.
+    Roles are stored in the `user_roles` association table.
+    """
+
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    display_name: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     email: Mapped[str] = mapped_column(String(254), unique=True, index=True, nullable=False)
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True, default=None)
-    auth_provider: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="EMAIL", server_default="EMAIL"
-    )  # EMAIL | GOOGLE
-    provider_account_id: Mapped[str | None] = mapped_column(
-        String(160), nullable=True, default=None, index=True
-    )  # provider-specific identity (e.g. Google "sub")
-    full_name: Mapped[str] = mapped_column(String(160), nullable=False, default="")
-    phone: Mapped[str] = mapped_column(String(60), default="")
-    country: Mapped[str] = mapped_column(String(120), default="")
-    role: Mapped[str] = mapped_column(
-        String(32), nullable=False, default="CUSTOMER", index=True
-    )  # CUSTOMER | TRAVEL_AGENT | MANAGER | ACCOUNTANT | ADMIN
-    requested_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    is_staff: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    token_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)  # bumped on password change/reset
-    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True, default=None)
+    email_verified_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True, default=None)
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    created_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=utcnow)
+    deleted_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True, default=None)
 
-    bookings: Mapped[list["Booking"]] = relationship(back_populates="user")
-    train_bookings: Mapped[list["TrainBooking"]] = relationship(
-        back_populates="user", cascade="all, delete-orphan"
-    )
-    cab_bookings: Mapped[list["CabBooking"]] = relationship(
-        back_populates="user", cascade="all, delete-orphan"
-    )
-    reset_tokens: Mapped[list["PasswordResetToken"]] = relationship(
-        back_populates="user", cascade="all, delete-orphan"
+    user_roles: Mapped[list["UserRole"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan", lazy="selectin"
     )
     hotels: Mapped[list["Hotel"]] = relationship(
-        back_populates="owner", cascade="all, delete-orphan"
+        back_populates="owner", cascade="all, delete-orphan", foreign_keys="[Hotel.owner_id]"
     )
+
+    # --- Python-level properties for compatibility with UserRead and security ---
+    @property
+    def full_name(self) -> str:
+        return self.display_name or self.email.split("@")[0]
+
+    @full_name.setter
+    def full_name(self, value: str) -> None:
+        self.display_name = value
+
+    @property
+    def auth_provider(self) -> str:
+        return "EMAIL"
+
+    @property
+    def provider_account_id(self) -> str | None:
+        return None
+
+    @property
+    def country(self) -> str:
+        return "India"
+
+    @property
+    def role(self) -> str:
+        if self.user_roles:
+            return self.user_roles[0].role_code.upper()
+        return "CUSTOMER"
+
+    @property
+    def is_staff(self) -> bool:
+        return self.role in ("ADMIN", "MANAGER", "STAFF", "TRAVEL_AGENT")
+
+    @property
+    def is_active(self) -> bool:
+        return self.status == "active" and self.deleted_at is None
+
+    @property
+    def token_version(self) -> int:
+        return 0
+
+    @property
+    def updated_at(self) -> datetime | None:
+        return self.created_at
+
+    @property
+    def requested_role(self) -> str | None:
+        return None
 
 
 class PasswordResetToken(Base):
@@ -91,7 +135,7 @@ class PasswordResetToken(Base):
     used_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 
-    user: Mapped["User"] = relationship(back_populates="reset_tokens")
+    user: Mapped["User"] = relationship()
 
 
 class Destination(Base):
@@ -372,7 +416,7 @@ class Booking(Base):
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
 
     package: Mapped["Package"] = relationship()
-    user: Mapped[Optional["User"]] = relationship(back_populates="bookings")
+    user: Mapped[Optional["User"]] = relationship()
     travellers: Mapped[list["BookingTraveller"]] = relationship(back_populates="booking", cascade="all, delete-orphan")
     payments: Mapped[list["Payment"]] = relationship(back_populates="booking", cascade="all, delete-orphan")
     documents: Mapped[list["BookingDocument"]] = relationship(back_populates="booking", cascade="all, delete-orphan")
@@ -504,6 +548,8 @@ class CustomerStory(Base):
     published_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True, default=utcnow)
 
+    user: Mapped[Optional["User"]] = relationship(foreign_keys=[user_id], lazy="joined")
+
     # --- Python-level defaults for columns absent in MySQL -------------------
     @property
     def id(self) -> int:
@@ -511,6 +557,8 @@ class CustomerStory(Base):
 
     @property
     def customer_name(self) -> str:
+        if self.user and self.user.display_name:
+            return self.user.display_name
         return "A traveller"
 
     @property
@@ -724,7 +772,7 @@ class TrainBooking(Base):
         UTCDateTime, default=utcnow, onupdate=utcnow
     )
 
-    user: Mapped[Optional["User"]] = relationship(back_populates="train_bookings")
+    user: Mapped[Optional["User"]] = relationship()
 
 
 class CabBooking(Base):
@@ -767,5 +815,5 @@ class CabBooking(Base):
         UTCDateTime, default=utcnow, onupdate=utcnow
     )
 
-    user: Mapped[Optional["User"]] = relationship(back_populates="cab_bookings")
+    user: Mapped[Optional["User"]] = relationship()
 

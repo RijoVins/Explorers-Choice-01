@@ -60,10 +60,11 @@ const nextConfig: NextConfig = {
     ];
   },
   async rewrites() {
+    const backendUrl = (process.env.NEXT_PUBLIC_EXPLORERS_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
     return [
       {
         source: "/api/:path*",
-        destination: "https://api.explorerschoice.online/api/:path*",
+        destination: `${backendUrl}/api/:path*`,
       },
     ];
   },
