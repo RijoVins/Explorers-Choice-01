@@ -6,6 +6,7 @@
 
 export const ALLOWED_IMAGE_HOSTS = [
   { protocol: "https", hostname: "images.unsplash.com" },
+  { protocol: "https", hostname: "explorers-backend.onrender.com" },
   { protocol: "http", hostname: "localhost", port: "8000" },
   // The API base may serve images from its own host in production.
   // Keep in sync with next.config.ts remotePatterns.

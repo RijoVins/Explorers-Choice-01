@@ -6,7 +6,7 @@ export function getApiBaseUrl(): string {
   const configured = typeof process !== "undefined" && typeof process.env !== "undefined"
     ? process.env.NEXT_PUBLIC_EXPLORERS_API_URL
     : undefined;
-  return (configured || "http://localhost:8000")
+  return (configured || "https://explorers-backend.onrender.com")
     .replace(/\/+$/, "")
     .replace(/\/api$/, "");
 }

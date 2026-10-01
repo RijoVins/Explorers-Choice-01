@@ -6,8 +6,9 @@ Secrets fail closed: the app refuses to start with the placeholder values
 unless `EXPLORERS_ALLOW_INSECURE=true` is explicitly set for local development.
 """
 from pathlib import Path
+from typing import Any
 
-from pydantic import AliasChoices, Field, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -21,8 +22,15 @@ class Settings(BaseSettings):
     )
 
     # ── Database ──────────────────────────────────────────────────────────────
-    # Only "mysql" is supported. This value is hardcoded and not configurable.
+    # Only "mysql" is supported.
     database_provider: str = "mysql"
+
+    @field_validator("database_provider")
+    @classmethod
+    def _validate_provider(cls, v: str) -> str:
+        if v.lower() != "mysql":
+            raise ValueError(f"Unsupported DATABASE_PROVIDER: '{v}'. Only 'mysql' is supported.")
+        return "mysql"
 
     # MySQL connection details. Kept as discrete variables so a password
     # containing @ : / ? # & cannot corrupt the connection URL.
@@ -76,8 +84,41 @@ class Settings(BaseSettings):
         "https://explorerschoice.online",
     ]
     cors_origin_regex: str | None = (
-        r"http://(?:localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}):\d{1,5}"
+        r"https?://(?:localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(?::\d{1,5})?|"
+        r"https://.*\.vercel\.app|"
+        r"https://.*\.onrender\.com"
     )
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _parse_cors_origins(cls, v: Any) -> list[str]:
+        origins: list[str] = []
+        if isinstance(v, str):
+            if v.startswith("[") and v.endswith("]"):
+                import json
+                try:
+                    origins = json.loads(v)
+                except Exception:
+                    origins = [x.strip() for x in v[1:-1].split(",") if x.strip()]
+            else:
+                origins = [x.strip() for x in v.split(",") if x.strip()]
+        elif isinstance(v, (list, tuple, set)):
+            origins = list(v)
+
+        always_include = [
+            "http://localhost:3000",
+            "http://localhost:3001",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:3001",
+            "http://localhost:3100",
+            "https://www.explorerschoice.online",
+            "https://explorerschoice.online",
+            "https://explorers-backend.onrender.com",
+        ]
+        for item in always_include:
+            if item not in origins:
+                origins.append(item)
+        return origins
 
     # ── Local dev escape hatch ────────────────────────────────────────────────
     allow_insecure_defaults: bool = Field(

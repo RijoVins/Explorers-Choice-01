@@ -1,0 +1,56 @@
+services:
+  - type: web
+    name: explorers-choice-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_PROVIDER
+        value: mysql
+      - key: MYSQL_HOST
+        fromEnv: MYSQL_HOST
+      - key: MYSQL_PORT
+        fromEnv: MYSQL_PORT
+      - key: MYSQL_DATABASE
+        fromEnv: MYSQL_DATABASE
+      - key: MYSQL_USER
+        fromEnv: MYSQL_USER
+      - key: MYSQL_PASSWORD
+        fromEnv: MYSQL_PASSWORD
+      - key: MYSQL_SSL_MODE
+        value: verify-ca
+      - key: SECRET_KEY
+        fromEnv: SECRET_KEY
+      - key: ADMIN_API_KEY
+        fromEnv: ADMIN_API_KEY
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: GOOGLE_CLIENT_ID
+        fromEnv: GOOGLE_CLIENT_ID
+      - key: GOOGLE_CLIENT_SECRET
+        fromEnv: GOOGLE_CLIENT_SECRET
+      - key: GOOGLE_REDIRECT_URI
+        fromEnv: GOOGLE_REDIRECT_URI
+      - key: GOOGLE_RETURN_URL
+        fromEnv: GOOGLE_RETURN_URL
+      - key: RESEND_API_KEY
+        fromEnv: RESEND_API_KEY
+      - key: ADMIN_NOTIFICATION_EMAIL
+        value: infoexplorerschoice@gmail.com
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USERNAME
+        fromEnv: SMTP_USERNAME
+      - key: SMTP_PASSWORD
+        fromEnv: SMTP_PASSWORD
+      - key: SMTP_FROM_EMAIL
+        fromEnv: SMTP_FROM_EMAIL
+      - key: SMTP_FROM_NAME
+        value: Explorers Choice
+      - key: SMTP_USE_TLS
+        value: "true"
+      - key: CORS_ORIGINS
+        fromEnv: CORS_ORIGINS

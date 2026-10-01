@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
-const externalApi = process.env.NEXT_PUBLIC_EXPLORERS_API_URL ? ` ${process.env.NEXT_PUBLIC_EXPLORERS_API_URL}` : "";
+const externalApi = process.env.NEXT_PUBLIC_EXPLORERS_API_URL
+  ? ` ${process.env.NEXT_PUBLIC_EXPLORERS_API_URL}`
+  : " https://explorers-backend.onrender.com";
 
 // BUG-15: src/lib/api.ts falls back to {protocol}//{hostname}:8000 when served
 // over the LAN so other devices can reach the backend. In non-production builds
@@ -43,6 +45,10 @@ const nextConfig: NextConfig = {
       {
         protocol: "https",
         hostname: "images.unsplash.com",
+      },
+      {
+        protocol: "https",
+        hostname: "explorers-backend.onrender.com",
       },
       {
         protocol: "http",
