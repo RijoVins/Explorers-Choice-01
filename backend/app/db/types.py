@@ -1,20 +1,17 @@
 """Provider-neutral database types.
 
-The ORM models are shared by both the MySQL and the Supabase (PostgreSQL)
-provider, so column types must be expressed in a dialect-neutral way while
-still producing correct DDL and correct Python values on each backend.
+The ORM models target MySQL (including TiDB Cloud). Column types are expressed
+in a dialect-neutral way while still producing correct DDL and correct Python
+values.
 
-Two differences between MySQL and PostgreSQL matter here:
+Two MySQL-specific considerations handled here:
 
-* MySQL ``DATETIME`` has no timezone concept. PostgreSQL ``TIMESTAMPTZ``
-  does. Naive datetimes returned by the MySQL driver would be serialised by
-  Pydantic without a UTC designator, changing the JSON response format the
-  frontend parses. ``UTCDateTime`` stores naive UTC on MySQL and re-attaches
-  ``timezone.utc`` on read, so both providers return identical aware values.
+* MySQL ``DATETIME`` has no timezone concept. ``UTCDateTime`` stores naive UTC
+  on MySQL and re-attaches ``timezone.utc`` on read, so all values returned
+  to the application are always timezone-aware.
 * MySQL ``TEXT`` is capped at 64 KiB and raises "Data too long for column"
-  rather than truncating. PostgreSQL ``TEXT`` is unbounded. ``LongText``
-  maps to ``LONGTEXT`` on MySQL so long-form content (itineraries, stories,
-  internal notes) can never overflow.
+  rather than truncating. ``LongText`` maps to ``LONGTEXT`` on MySQL so
+  long-form content (itineraries, stories, internal notes) can never overflow.
 """
 from __future__ import annotations
 
@@ -27,10 +24,10 @@ from sqlalchemy.types import TypeDecorator
 
 
 class UTCDateTime(TypeDecorator):
-    """Timezone-aware UTC timestamp on any backend.
+    """Timezone-aware UTC timestamp stored as naive DATETIME on MySQL.
 
-    PostgreSQL  -> TIMESTAMP WITH TIME ZONE
-    MySQL       -> DATETIME(fsp=6) holding naive UTC, re-attached as UTC on read
+    Stores naive UTC in the database; re-attaches ``timezone.utc`` on read
+    so all application-level datetime values are always timezone-aware.
     """
 
     impl = DateTime
@@ -44,13 +41,7 @@ class UTCDateTime(TypeDecorator):
     def process_bind_param(self, value: Optional[datetime], dialect) -> Optional[datetime]:
         if value is None:
             return None
-        if dialect.name != "mysql":
-            # PostgreSQL TIMESTAMPTZ stores the instant, so the aware value is
-            # passed through unchanged. Stripping the offset here would make the
-            # server reinterpret it in its own session timezone and shift it.
-            return value
-        # MySQL DATETIME carries no offset, so normalise to naive UTC on the way
-        # in and re-attach UTC on the way out.
+        # MySQL DATETIME carries no offset, so normalise to naive UTC on the way in.
         if value.tzinfo is not None:
             value = value.astimezone(timezone.utc).replace(tzinfo=None)
         return value
@@ -64,7 +55,7 @@ class UTCDateTime(TypeDecorator):
 
 
 class LongText(TypeDecorator):
-    """Unbounded text on PostgreSQL, ``LONGTEXT`` on MySQL."""
+    """``LONGTEXT`` on MySQL for unbounded text storage."""
 
     impl = Text
     cache_ok = True

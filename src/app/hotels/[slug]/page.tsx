@@ -136,10 +136,10 @@ export default async function HotelDetailPage({
               <p className="mt-4 font-display text-2xl text-forest">Rates on request</p>
             )}
             <Link
-              href={`/book?hotel=${hotel.slug}`}
+              href={`/contact?hotel=${hotel.slug}&name=${encodeURIComponent(hotel.name)}`}
               className="mt-6 block w-full rounded-full bg-terracotta py-3 text-center text-sm font-semibold text-ivory transition-colors hover:bg-terracotta-dark"
             >
-              Book Now
+              Enquire Now
             </Link>
             <Link
               href="/hotels"

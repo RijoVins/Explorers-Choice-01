@@ -77,7 +77,7 @@ export const planners: Planner[] = [
     name: "Raghav Iyer",
     role: "Operations & Care",
     speciality: "Goa · Kerala · logistics",
-    image: "https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=600&q=80",
+    image: "https://images.unsplash.com/photo-1556157388-97ec21184b4a?auto=format&fit=crop&w=600&q=80",
     quote: "The details that feel invisible on the trip are the ones we worked hardest on.",
   },
 ];

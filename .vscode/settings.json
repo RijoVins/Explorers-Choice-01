@@ -1,0 +1,32 @@
+{
+    "sqltools.connections": [
+        {
+            "mysqlOptions": {
+                "authProtocol": "default",
+                "enableSsl": "Disabled"
+            },
+            "ssh": "Disabled",
+            "previewLimit": 50,
+            "server": "gateway01.ap-southeast-1.prod.aws.tidbcloud.com",
+            "port": 4000,
+            "driver": "MySQL",
+            "username": "3SwQyxxvnuxEgVV.root",
+            "database": "Explorers_Choice_db",
+            "name": "New Connection 1"
+        },
+        {
+            "mysqlOptions": {
+                "authProtocol": "default",
+                "enableSsl": "Disabled"
+            },
+            "ssh": "Disabled",
+            "previewLimit": 50,
+            "server": "localhost",
+            "port": 4000,
+            "driver": "MySQL",
+            "name": "gateway01.ap-southeast-1.prod.aws.tidbcloud.com",
+            "username": "3SwQyxxvnuxEgVV.root",
+            "database": "Explorers_Choice_db"
+        }
+    ]
+}

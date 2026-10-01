@@ -1,13 +1,12 @@
 """Database provider implementations.
 
-A provider owns everything specific to one database backend: how the
-connection URL is built, which engine options apply, whether schema
-migrations run at startup, and how a connectivity check is performed.
+A provider owns everything specific to the MySQL database backend: how the
+connection URL is built, which engine options apply, and how a connectivity
+check is performed.  The only supported provider is MySQL (including
+TiDB Cloud which is MySQL-compatible).
 
-There is deliberately **no fallback logic here**. If ``DATABASE_PROVIDER``
-selects MySQL and MySQL is unreachable, the application fails loudly. It
-never silently retries against Supabase, because that would split writes
-across two databases without anyone noticing.
+There is deliberately **no fallback logic here**. If MySQL is unreachable,
+the application fails loudly.
 """
 from __future__ import annotations
 
@@ -117,44 +116,22 @@ class MySQLProvider(DatabaseProvider):
         return False
 
 
-class SupabaseProvider(DatabaseProvider):
-    """Supabase-hosted PostgreSQL. Retained unchanged for reactivation."""
-
-    name = "supabase"
-    dialect = "postgresql"
-
-    def __init__(self, settings: Any) -> None:
-        self.settings = settings
-
-    def build_url(self) -> str:
-        return self.settings.database_url
-
-    def engine_options(self) -> dict[str, Any]:
-        return {
-            "pool_size": self.settings.db_pool_size,
-            "max_overflow": self.settings.db_max_overflow,
-            "pool_timeout": 30,
-            "pool_recycle": 1800,
-        }
-
-    def run_migrations_on_startup(self) -> bool:
-        return True
-
-
 PROVIDERS: dict[str, type[DatabaseProvider]] = {
     MySQLProvider.name: MySQLProvider,
-    SupabaseProvider.name: SupabaseProvider,
 }
 
 
 def get_provider(settings: Any) -> DatabaseProvider:
-    """Resolve ``DATABASE_PROVIDER`` to exactly one provider instance."""
+    """Resolve ``DATABASE_PROVIDER`` to exactly one provider instance.
+
+    Only ``mysql`` is supported. Anything else raises at startup.
+    """
     key = (settings.database_provider or "").strip().lower()
     provider_cls = PROVIDERS.get(key)
     if provider_cls is None:
         raise ValueError(
             f"DATABASE_PROVIDER={key!r} is not supported. "
-            f"Use one of: {', '.join(sorted(PROVIDERS))}."
+            f"Only 'mysql' is accepted."
         )
     provider = provider_cls(settings)
     logger.info("Database provider resolved: %s", provider.name)

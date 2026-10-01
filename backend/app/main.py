@@ -1,12 +1,9 @@
 """Main FastAPI application for Explorers Choice."""
 from contextlib import asynccontextmanager
 import logging
-from pathlib import Path
 import time
 import uuid
 
-from alembic import command
-from alembic.config import Config
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -32,42 +29,13 @@ from .routes import packages as packages_router
 from .routes import trains as trains_router
 
 def run_startup_migrations():
-    """Ensure database schema is up-to-date with Alembic migrations on startup.
+    """Verify MySQL connectivity at startup (read-only probe).
 
-    BUG-09: migration failures now raise SystemExit so startup cannot continue
-    against an outdated schema.
-
-    This runs ONLY for the Supabase/PostgreSQL provider. When
-    ``DATABASE_PROVIDER=mysql`` the MySQL schema is owned outside this
-    application, so Alembic is skipped entirely and startup performs a
-    read-only connectivity check instead. No table is ever created, altered or
-    dropped against MySQL.
+    The MySQL schema is managed via Alembic MySQL migrations (migrations_mysql/).
+    Startup only does a read-only SELECT 1 to confirm the database is reachable.
+    No table is ever created, altered, or dropped automatically.
     """
-    if not provider.run_migrations_on_startup():
-        logger.info(
-            "DATABASE_PROVIDER=%s: skipping Alembic (schema is managed outside "
-            "this application). Verifying connectivity read-only instead.",
-            provider.name,
-        )
-        check_database_connectivity()
-        return
-
-    try:
-        backend_dir = Path(__file__).resolve().parent.parent
-        alembic_ini = backend_dir / "alembic.ini"
-        if alembic_ini.exists():
-            alembic_cfg = Config(str(alembic_ini))
-            alembic_cfg.set_main_option("script_location", str(backend_dir / "app" / "migrations"))
-            # alembic uses configparser, which treats % as interpolation unless escaped.
-            escaped_url = settings.database_url.replace("%", "%%")
-            alembic_cfg.set_main_option("sqlalchemy.url", escaped_url)
-            command.upgrade(alembic_cfg, "head")
-            logger.info("Database schema verified / upgraded to head successfully.")
-        else:
-            logger.warning("alembic.ini not found; cannot verify schema.")
-    except Exception as exc:
-        logger.critical("Database migration failed, refusing to start: %s", exc)
-        raise SystemExit(1) from exc
+    check_database_connectivity()
 
 
 def check_database_connectivity():

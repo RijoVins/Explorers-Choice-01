@@ -4,26 +4,23 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "server:dev": "cd backend && .venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
+    "server:dev": "cd backend && set \"DATABASE_URL=sqlite:///./explorers_choice.db\" && set \"EXPLORERS_ALLOW_INSECURE=true\" && set \"COOKIE_SECURE=false\" && ..\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --reload --port 8000",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
-    "@heroicons/react": "^2.2.0",
     "next": "16.3.4",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
   "devDependencies": {
-    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
-    "playwright": "^1.63.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

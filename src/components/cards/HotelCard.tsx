@@ -72,10 +72,10 @@ export function HotelCard({ hotel }: { hotel: ApiHotel }) {
             View Hotel
           </Link>
           <Link
-            href={`/book?hotel=${hotel.slug}`}
+            href={`/contact?hotel=${hotel.slug}&name=${encodeURIComponent(hotel.name)}`}
             className="flex-1 rounded-full bg-terracotta py-2.5 text-center text-sm font-semibold text-ivory transition-colors hover:bg-terracotta-dark"
           >
-            Book Now
+            Enquire Now
           </Link>
         </div>
       </div>
