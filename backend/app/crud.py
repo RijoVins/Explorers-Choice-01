@@ -25,19 +25,26 @@ def get_user(db: Session, user_id: int | None = None, email: str | None = None) 
 
 
 def create_user(db: Session, data: schemas.UserCreate, password_hash: str) -> models.User:
-    role_code = "hotel_owner" if data.requested_role == "HOTEL_OWNER" else (
-        data.requested_role.lower() if data.requested_role and data.requested_role != "CUSTOMER" else "customer"
-    )
-    user = models.User(
-        email=data.email.strip().lower(),
-        password_hash=password_hash,
-        display_name=data.full_name.strip(),
-        phone=data.phone.strip() if data.phone else None,
-        status="active",
-    )
+    if data.requested_role == "HOTEL_OWNER":
+        user = models.User(
+            email=data.email.strip().lower(),
+            password_hash=password_hash,
+            full_name=data.full_name.strip(),
+            phone=data.phone.strip(),
+            country=data.country.strip(),
+            role="HOTEL_OWNER",
+            requested_role=None,
+        )
+    else:
+        user = models.User(
+            email=data.email.strip().lower(),
+            password_hash=password_hash,
+            full_name=data.full_name.strip(),
+            phone=data.phone.strip(),
+            country=data.country.strip(),
+            requested_role=data.requested_role if data.requested_role != "CUSTOMER" else None,
+        )
     db.add(user)
-    db.flush()
-    db.add(models.UserRole(user_id=user.id, role_code=role_code))
     db.commit()
     db.refresh(user)
     return user
@@ -83,11 +90,9 @@ def link_google_account(
 
 
 def update_user(db: Session, user: models.User, data: schemas.ProfileUpdate) -> models.User:
-    patch = data.model_dump(exclude_unset=True)
-    if "full_name" in patch and patch["full_name"]:
-        user.display_name = patch["full_name"].strip()
-    if "phone" in patch:
-        user.phone = patch["phone"].strip() if patch["phone"] else None
+    for field, value in data.model_dump(exclude_unset=True).items():
+        if value is not None:
+            setattr(user, field, value)
     db.commit()
     db.refresh(user)
     return user
@@ -159,8 +164,10 @@ def reset_user_password(
 # ---------------------------------------------------------------------------
 def list_destinations(db: Session, *, active_only: bool = True, featured_only: bool = False):
     query = select(models.Destination).order_by(models.Destination.name)
-    # MySQL destinations table has no is_active or is_featured columns —
-    # all rows are considered active; featured filter is also skipped.
+    if active_only:
+        query = query.where(models.Destination.is_active.is_(True))
+    if featured_only:
+        query = query.where(models.Destination.is_featured.is_(True))
     return db.scalars(query).all()
 
 
@@ -206,25 +213,19 @@ def delete_destination(db: Session, destination: models.Destination, *, hard: bo
 # Packages
 # ---------------------------------------------------------------------------
 def _package_base_query():
-    # destination_id, itinerary_days, and package_faqs columns/tables don't
-    # exist in MySQL — query packages directly with no eager loads.
-    return select(models.Package)
+    return select(models.Package).options(
+        selectinload(models.Package.destination),
+        selectinload(models.Package.itinerary),
+        selectinload(models.Package.faqs),
+    )
 
 
 def list_packages(db: Session, *, active_only: bool = True, featured_only: bool = False):
     query = _package_base_query().order_by(models.Package.name)
     if active_only:
-        # MySQL uses status ENUM('draft','published','archived') — filter on 'published'
-        # and exclude soft-deleted rows (deleted_at IS NULL).
-        query = query.where(
-            models.Package.status == "published",
-            models.Package.deleted_at.is_(None),
-        )
-    elif featured_only:
-        query = query.where(
-            models.Package.status == "published",
-            models.Package.deleted_at.is_(None),
-        )
+        query = query.where(models.Package.is_active.is_(True))
+    if featured_only:
+        query = query.where(models.Package.is_featured.is_(True))
     return db.scalars(query).unique().all()
 
 
@@ -591,8 +592,7 @@ def delete_enquiry(db: Session, enquiry: models.Enquiry) -> None:
 def list_customer_stories(db: Session, *, published_only: bool = False) -> list[models.CustomerStory]:
     query = select(models.CustomerStory).order_by(models.CustomerStory.created_at.desc())
     if published_only:
-        # MySQL uses status ENUM; 'approved' is the published state.
-        query = query.where(models.CustomerStory.status == "approved")
+        query = query.where(models.CustomerStory.is_published.is_(True))
     return db.scalars(query).all()
 
 
@@ -974,15 +974,9 @@ def get_hotel(db: Session, hotel_id: int) -> models.Hotel | None:
 
 
 def get_hotel_by_slug(db: Session, slug: str) -> models.Hotel | None:
-    if slug.isdigit():
-        h = db.get(models.Hotel, int(slug))
-        if h:
-            return h
-    hotels = db.scalars(select(models.Hotel)).all()
-    for h in hotels:
-        if h.slug == slug or h.hotel_name.lower() == slug.lower():
-            return h
-    return None
+    return db.scalars(
+        select(models.Hotel).where(models.Hotel.slug == slug)
+    ).first()
 
 
 def list_owner_hotels(db: Session, owner_id: int) -> list[models.Hotel]:
@@ -996,6 +990,7 @@ def list_owner_hotels(db: Session, owner_id: int) -> list[models.Hotel]:
 def list_published_hotels(db: Session) -> list[models.Hotel]:
     return db.scalars(
         select(models.Hotel)
+        .where(models.Hotel.is_published.is_(True))
         .order_by(models.Hotel.created_at.desc())
     ).all()
 
@@ -1008,10 +1003,18 @@ def list_all_hotels(db: Session) -> list[models.Hotel]:
 
 def create_hotel(db: Session, owner_id: int, data: schemas.HotelCreate) -> models.Hotel:
     hotel = models.Hotel(
-        hotel_name=data.name.strip(),
-        address=data.location.strip() or data.description.strip() or "Standard Address",
         owner_id=owner_id,
-        destination_id=1,
+        slug=_unique_hotel_slug(db, data.name),
+        name=data.name.strip(),
+        location=data.location.strip(),
+        destination=data.destination.strip(),
+        tagline=data.tagline.strip(),
+        description=data.description.strip(),
+        image=data.image.strip(),
+        price_per_night=data.price_per_night,
+        currency=data.currency.strip().upper() or "INR",
+        amenities=[a.strip() for a in data.amenities if a.strip()],
+        highlights=[h.strip() for h in data.highlights if h.strip()],
     )
     db.add(hotel)
     db.commit()
@@ -1024,10 +1027,19 @@ def create_admin_hotel(
 ) -> models.Hotel:
     """Create a hotel on behalf of an admin; assigns an explicit owner when given."""
     hotel = models.Hotel(
-        hotel_name=data.name.strip(),
-        address=data.location.strip() or data.description.strip() or "Standard Address",
         owner_id=data.owner_id or actor_id,
-        destination_id=1,
+        slug=_unique_hotel_slug(db, data.name),
+        name=data.name.strip(),
+        location=data.location.strip(),
+        destination=data.destination.strip(),
+        tagline=data.tagline.strip(),
+        description=data.description.strip(),
+        image=data.image.strip(),
+        price_per_night=data.price_per_night,
+        currency=data.currency.strip().upper() or "INR",
+        amenities=[a.strip() for a in data.amenities if a.strip()],
+        highlights=[h.strip() for h in data.highlights if h.strip()],
+        is_published=data.is_published,
     )
     db.add(hotel)
     db.commit()
@@ -1038,9 +1050,13 @@ def create_admin_hotel(
 def update_hotel(db: Session, hotel: models.Hotel, data: schemas.HotelUpdate) -> models.Hotel:
     patch = data.model_dump(exclude_unset=True)
     if "name" in patch and patch["name"]:
-        hotel.hotel_name = patch["name"].strip()
-    if "location" in patch and patch["location"]:
-        hotel.address = patch["location"].strip()
+        hotel.slug = _unique_hotel_slug(db, patch["name"])
+    for field, value in patch.items():
+        if field == "currency" and value:
+            value = value.strip().upper() or "INR"
+        if field in ("amenities", "highlights") and value is not None:
+            value = [item.strip() for item in value if item.strip()]
+        setattr(hotel, field, value)
     db.commit()
     db.refresh(hotel)
     return hotel

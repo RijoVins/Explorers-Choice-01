@@ -219,8 +219,8 @@ class PackageRead(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     destination: Optional[DestinationRead] = None
-    itinerary: list = []
-    faqs: list = []
+    itinerary: list[ItineraryDayRead] = []
+    faqs: list[PackageFaqRead] = []
 
 
 class PackageSummary(BaseModel):
