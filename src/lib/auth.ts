@@ -24,7 +24,7 @@ export type LoginPayload = {
   password: string;
 };
 
-import { getApiBaseUrl, CLIENT_API_URL as API_URL } from "@/lib/api";
+import { getApiBaseUrl } from "@/lib/api";
 
 function apiErrorMessage(body: unknown, fallback: string): string {
   if (!body || typeof body !== "object" || !("detail" in body)) return fallback;
@@ -146,10 +146,16 @@ export async function resetPassword(token: string, password: string): Promise<vo
  * Build a URL that sends the browser through the backend-driven Google OAuth
  * flow. The `next` path is where the user lands after a successful sign-in
  * (validated server-side to a local path).
+ *
+ * Deliberately same-origin: the Google callback is a top-level navigation that
+ * sets the session cookie on whatever host answers it. Going through this
+ * origin means the rewrite in next.config.ts proxies to the backend *and* the
+ * cookie is first-party, so the session is already established by the time the
+ * browser lands back on /account.
  */
 export function googleLoginUrl(next?: string): string {
   const path = next && next.startsWith("/") && !next.startsWith("//") ? next : "/account";
-  return `${API_URL}/auth/google?next=${encodeURIComponent(path)}`;
+  return `/api/auth/google?next=${encodeURIComponent(path)}`;
 }
 
 const STAFF_ROLES = new Set(["TRAVEL_AGENT", "MANAGER", "ACCOUNTANT", "ADMIN"]);

@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     # containing @ : / ? # & cannot corrupt the connection URL.
     # Set MYSQL_URL instead if you prefer a single connection string.
     mysql_host: str = ""
-    mysql_port: int = 3306
+    mysql_port: int = 3307
     mysql_database: str = ""
     mysql_user: str = ""
     mysql_password: str = ""

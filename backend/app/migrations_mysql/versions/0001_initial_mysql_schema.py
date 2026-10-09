@@ -26,7 +26,7 @@ branch_labels = None
 depends_on = None
 
 
-def upgrade() -> None():
+def upgrade() -> None:
     op.create_table(
         'users',
         sa.Column('id', sa.Integer(), primary_key=True, autoincrement=True, nullable=False),
@@ -436,7 +436,7 @@ def upgrade() -> None():
     op.create_index('ix_booking_notes_booking_id', 'booking_notes', ['booking_id'], unique=False)
 
 
-def downgrade() -> None():
+def downgrade() -> None:
     op.drop_table('booking_notes')
     op.drop_table('booking_documents')
     op.drop_table('payments')

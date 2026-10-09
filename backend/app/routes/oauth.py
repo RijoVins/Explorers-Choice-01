@@ -77,6 +77,10 @@ def _build_callback_url() -> str:
     return settings.google_redirect_uri
 
 
+def _return_origin() -> str:
+    return settings.google_return_url.rstrip("/")
+
+
 def _normalize_next(raw: str | None) -> str:
     if raw and _is_safe_next(raw):
         return raw
@@ -85,9 +89,21 @@ def _normalize_next(raw: str | None) -> str:
 
 # Role-appropriate landing pages. A customer must never be dropped onto /admin
 # after signing in, or login would loop forever.
+#
+# Staff is decided by ROLE, never by `is_staff` alone: the frontend admin guard
+# (src/app/admin/layout.tsx) requires both `is_staff` and a staff role, so
+# redirecting on `is_staff` alone would land the user on /admin, get bounced
+# straight back to /login, and loop.
+_STAFF_ROLES = frozenset({"TRAVEL_AGENT", "MANAGER", "ACCOUNTANT", "ADMIN"})
 _STAFF_PREFIXES = ("/admin",)
 _OWNER_PREFIXES = ("/hotel-owner",)
 _CUSTOMER_PREFIXES = ("/account",)
+
+
+def _is_staff_role(user) -> bool:
+    return bool(getattr(user, "is_staff", False)) and str(
+        getattr(user, "role", "")
+    ) in _STAFF_ROLES
 
 
 def _safe_post_login_path(raw: str, user) -> str:
@@ -95,7 +111,7 @@ def _safe_post_login_path(raw: str, user) -> str:
     default landing page for the role."""
     if not _is_safe_next(raw):
         raw = "/account"
-    if user.is_staff:
+    if _is_staff_role(user):
         return raw if raw.startswith(_STAFF_PREFIXES) else "/admin"
     if user.role == "HOTEL_OWNER":
         return raw if raw.startswith(_OWNER_PREFIXES) else "/hotel-owner"
@@ -150,7 +166,7 @@ def google_login_callback(
             detail="Google sign-in is not configured.",
         )
 
-    base_return = settings.google_return_url.rstrip("/")
+    base_return = _return_origin()
 
     # If Google returned an error (user cancelled consent, etc.)
     if error:

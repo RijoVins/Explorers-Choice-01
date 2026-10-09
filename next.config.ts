@@ -1,8 +1,68 @@
 import type { NextConfig } from "next";
 
-const externalApi = process.env.NEXT_PUBLIC_EXPLORERS_API_URL
-  ? ` ${process.env.NEXT_PUBLIC_EXPLORERS_API_URL}`
-  : " https://explorers-backend.onrender.com";
+/** Strip trailing slashes and any trailing `/api` so we are left with a bare origin. */
+function normalizeOrigin(value: string | undefined): string {
+  const trimmed = (value ?? "").trim().replace(/\/+$/, "").replace(/\/api$/, "");
+  if (!trimmed) return "";
+  try {
+    return new URL(trimmed).origin;
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * The backend origin, resolved server-side only.
+ *
+ * `NEXT_PUBLIC_EXPLORERS_API_URL` deliberately points at *this* site so that the
+ * browser makes same-origin requests and the session cookie stays first-party.
+ * It must therefore never be used as a rewrite destination — see below.
+ */
+function backendOrigin(): string {
+  return normalizeOrigin(process.env.EXPLORERS_API_URL ?? process.env.EXPLORERS_API_ORIGIN);
+}
+
+/**
+ * Origins that belong to this deployment.
+ *
+ * A rewrite whose destination is one of these turns `/api/x` into
+ * `<self>/api/x`, which matches the very same rewrite again, on every pass.
+ * Vercel detects the recursion and answers `508 INFINITE_LOOP_DETECTED` for all
+ * API traffic — which is exactly what broke "Continue with Google".
+ */
+function selfOrigins(): string[] {
+  return [
+    process.env.NEXT_PUBLIC_EXPLORERS_API_URL,
+    process.env.NEXT_PUBLIC_SITE_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : "",
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "",
+  ]
+    .map(normalizeOrigin)
+    .filter(Boolean);
+}
+
+const externalApi = (() => {
+  const origin = backendOrigin();
+  return origin ? ` ${origin}` : "";
+})();
+
+/** Allow next/image to render media the backend itself serves. */
+const backendImagePattern = (() => {
+  const origin = backendOrigin();
+  if (!origin) return null;
+  try {
+    const url = new URL(origin);
+    return {
+      protocol: url.protocol.replace(":", "") as "http" | "https",
+      hostname: url.hostname,
+      ...(url.port ? { port: url.port } : {}),
+    };
+  } catch {
+    return null;
+  }
+})();
 
 // BUG-15: src/lib/api.ts falls back to {protocol}//{hostname}:8000 when served
 // over the LAN so other devices can reach the backend. In non-production builds
@@ -55,6 +115,7 @@ const nextConfig: NextConfig = {
         hostname: "localhost",
         port: "8000",
       },
+      ...(backendImagePattern ? [backendImagePattern] : []),
     ],
   },
   async headers() {
@@ -66,11 +127,28 @@ const nextConfig: NextConfig = {
     ];
   },
   async rewrites() {
-    const backendUrl = (process.env.NEXT_PUBLIC_EXPLORERS_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
+    const destination = backendOrigin();
+
+    if (!destination) {
+      // No backend configured (e.g. a pure marketing deploy). Registering the
+      // rewrite anyway would send `/api/*` to a dead host.
+      return [];
+    }
+
+    if (selfOrigins().includes(destination)) {
+      // Fail the build loudly rather than ship a site whose entire API surface
+      // answers 508 INFINITE_LOOP_DETECTED.
+      throw new Error(
+        `next.config: refusing to rewrite /api/* to ${destination} because that is this ` +
+          `deployment's own origin, which loops. Set EXPLORERS_API_URL to the backend origin ` +
+          `(e.g. https://api.explorerschoice.online).`,
+      );
+    }
+
     return [
       {
         source: "/api/:path*",
-        destination: `${backendUrl}/api/:path*`,
+        destination: `${destination}/api/:path*`,
       },
     ];
   },
